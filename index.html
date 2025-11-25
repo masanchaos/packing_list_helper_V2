@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧拖拽分箱工具 (V88 - 完成狀態標記)</title>
+    <title>智慧拖拽分箱工具 (V89 - 雙模式版)</title>
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
@@ -20,6 +20,13 @@
         button, .button-label { display: inline-block; padding: 10px 15px; border: none; border-radius: 4px; background-color: #007bff; color: white; cursor: pointer; font-size: 16px; transition: background-color 0.2s; text-align: center;}
         .button-label:hover, button:hover { background-color: #0056b3; }
         button:disabled { background-color: #a77c81; cursor: not-allowed; }
+        
+        /* 模式切換按鈕樣式 */
+        #mode-switch-btn { background-color: #6610f2; }
+        #mode-switch-btn:hover { background-color: #520dc2; }
+        #mode-switch-btn.inbound-mode { background-color: #d63384; }
+        #mode-switch-btn.inbound-mode:hover { background-color: #b02a6b; }
+
         #export-btn { background-color: #28a745; }
         #export-btn:hover { background-color: #218838; }
         #export-a4-pdf-btn { background-color: #17a2b8; }
@@ -89,6 +96,7 @@
             <div class="controls">
                 <textarea id="data-input" placeholder="1. 在此貼上商品資料..."></textarea>
                 <div class="button-group">
+                    <button id="mode-switch-btn">目前模式：出貨模式</button>
                     <button id="parse-btn">解析資料</button>
                     <label for="import-csv-input" class="button-label" style="background-color:#ffc107; color:#212529;">還原CSV備份</label>
                     <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
@@ -142,6 +150,7 @@
     const orderNumberInput = document.getElementById('order-number-input');
     const dataInput = document.getElementById('data-input');
     const parseBtn = document.getElementById('parse-btn');
+    const modeSwitchBtn = document.getElementById('mode-switch-btn'); // 新增
     const addBinBtn = document.getElementById('add-bin-btn');
     const clearDataBtn = document.getElementById('clear-data-btn');
     const quickAddBinsBtn = document.getElementById('quick-add-bins-btn');
@@ -169,6 +178,7 @@
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
+    let currentMode = 'outbound'; // 'outbound' (出貨) or 'inbound' (入倉)
 
     // --- 核心渲染函式 ---
     function render() {
@@ -359,6 +369,9 @@
         choiceList.innerHTML = '';
     }
 
+    // --- 解析邏輯 ---
+    
+    // 原始解析邏輯 (出貨模式)
     function intelligentParse(rawLines) {
         const poolMap = new Map();
         const dataLines = rawLines.map(line => line.trim()).filter(line => line);
@@ -373,12 +386,12 @@
                 if (!isNaN(quantity)) {
                     item = {
                         code: columns[0].trim(),
-                        barcode: columns[1].trim() || 'NA', // Handle empty barcode string
+                        barcode: columns[1].trim() || 'NA',
                         name: columns[2].trim(),
                         quantity: quantity
                     };
                 }
-            } else if (columns.length === 3) { // Fallback for format without barcode
+            } else if (columns.length === 3) {
                 const quantity = parseInt(columns[2], 10);
                 if (!isNaN(quantity)) {
                     item = {
@@ -395,6 +408,43 @@
                     poolMap.get(item.code).quantity += item.quantity;
                 } else {
                     poolMap.set(item.code, item);
+                }
+            }
+        }
+        return poolMap;
+    }
+
+    // 新增：入倉模式解析邏輯
+    function parseInboundData(rawLines) {
+        const poolMap = new Map();
+        // 移除空行
+        const dataLines = rawLines.map(line => line.trim()).filter(line => line);
+
+        if (dataLines.length % 4 !== 0) {
+            showToast("警告：入倉資料行數不是4的倍數，解析可能會不完整！", "error");
+        }
+
+        // 步長為 4，依序讀取 編號, 名稱, 數量, 數量2(忽略)
+        for (let i = 0; i < dataLines.length; i += 4) {
+            if (i + 3 >= dataLines.length) break;
+
+            const code = dataLines[i];
+            const name = dataLines[i+1];
+            const qtyStr = dataLines[i+2];
+            // const qty2 = dataLines[i+3]; // 忽略此行
+
+            const quantity = parseInt(qtyStr, 10);
+            
+            if (code && name && !isNaN(quantity)) {
+                if (poolMap.has(code)) {
+                    poolMap.get(code).quantity += quantity;
+                } else {
+                    poolMap.set(code, {
+                        code: code,
+                        barcode: 'NA', // 入倉格式中無條碼，預設為 NA
+                        name: name,
+                        quantity: quantity
+                    });
                 }
             }
         }
@@ -436,8 +486,38 @@
     }
 
     // --- 事件監聽器綁定 ---
+    
+    // 模式切換按鈕
+    modeSwitchBtn.addEventListener('click', () => {
+        if (currentMode === 'outbound') {
+            currentMode = 'inbound';
+            modeSwitchBtn.textContent = '目前模式：入倉模式';
+            modeSwitchBtn.classList.add('inbound-mode');
+            dataInput.placeholder = '1. 在此貼上入倉資料 (格式：編號\\n名稱\\n數量\\n數量2)...';
+            showToast('已切換至【入倉模式】', 'info');
+        } else {
+            currentMode = 'outbound';
+            modeSwitchBtn.textContent = '目前模式：出貨模式';
+            modeSwitchBtn.classList.remove('inbound-mode');
+            dataInput.placeholder = '1. 在此貼上商品資料...';
+            showToast('已切換至【出貨模式】', 'info');
+        }
+    });
+
     parseBtn.addEventListener('click', () => {
-        const parsedMap = intelligentParse(dataInput.value.trim().split('\n'));
+        const rawLines = dataInput.value.trim().split('\n');
+        if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === '')) {
+            showToast("請先輸入資料！", "error");
+            return;
+        }
+
+        let parsedMap;
+        if (currentMode === 'inbound') {
+            parsedMap = parseInboundData(rawLines);
+        } else {
+            parsedMap = intelligentParse(rawLines);
+        }
+
         if (parsedMap.size > 0) {
             AppState.pool = parsedMap;
             AppState.bins.clear();
@@ -445,12 +525,13 @@
             binCounter = 0;
             render();
             dataInput.value = '';
-            showToast('資料解析成功！', 'success');
+            showToast(`資料解析成功！(模式：${currentMode === 'inbound' ? '入倉' : '出貨'})`, 'success');
             saveStateToLocalStorage();
         } else {
-            showToast("解析失敗！請檢查資料格式。", 'error');
+            showToast("解析失敗！請檢查資料格式是否符合當前模式。", 'error');
         }
     });
+
     addBinBtn.addEventListener('click', () => {
         binCounter++;
         const binId = `bin-${binCounter}`;
