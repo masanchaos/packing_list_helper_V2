@@ -3,21 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧拖拽分箱工具 (V93 - 匯出格式優化版)</title>
+    <title>智慧拖拽分箱工具 (V94 - 列表捲動優化版)</title>
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
         .container { display: flex; width: 100%; padding: 20px; gap: 20px; }
-        .panel { background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .panel { background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; /* 防止面板本身撐開 */ }
         #item-pool-container { flex: 1; }
         #bin-area-container { flex: 2; }
-        h2 { text-align: center; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; margin: 20px; }
+        h2 { text-align: center; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; margin: 15px 20px 10px 20px; }
         
-        /* --- 控制項 --- */
-        .controls { padding: 20px; border-bottom: 2px solid #eee; }
-        textarea { width: calc(100% - 22px); height: 100px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; padding: 10px; font-size: 14px; }
-        .button-group { display: flex; flex-wrap: wrap; gap: 10px; }
-        button, .button-label { display: inline-block; padding: 10px 15px; border: none; border-radius: 4px; background-color: #007bff; color: white; cursor: pointer; font-size: 16px; transition: background-color 0.2s; text-align: center;}
+        /* --- 控制項 (優化空間) --- */
+        .controls { padding: 15px; border-bottom: 2px solid #eee; flex-shrink: 0; /* 防止控制項被壓縮 */ }
+        
+        /* 修改：縮小輸入框高度，讓出空間給列表 */
+        textarea { width: calc(100% - 22px); height: 60px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; padding: 10px; font-size: 14px; }
+        
+        .button-group { display: flex; flex-wrap: wrap; gap: 8px; }
+        button, .button-label { display: inline-block; padding: 8px 12px; border: none; border-radius: 4px; background-color: #007bff; color: white; cursor: pointer; font-size: 15px; transition: background-color 0.2s; text-align: center;}
         .button-label:hover, button:hover { background-color: #0056b3; }
         button:disabled { background-color: #a77c81; cursor: not-allowed; }
         
@@ -41,7 +44,7 @@
         #quick-add-bins-btn:hover { background-color: #1baa80; }
 
         /* --- 列表與輸入框 --- */
-        .list-header { padding: 0 20px; }
+        .list-header { padding: 0 20px; flex-shrink: 0; }
         .list-header h2, #bin-area-title { display: flex; justify-content: space-between; align-items: center; }
         .item-count { background-color: #6c757d; color: white; font-size: 14px; padding: 2px 8px; border-radius: 10px; }
         
@@ -52,13 +55,45 @@
         #scan-input { border: 2px solid #ffc107; background-color: #fffbf2; }
         #scan-input:focus { border-color: #fd7e14; outline: none; box-shadow: 0 0 5px rgba(253, 126, 20, 0.5); }
         
-        .scan-group { padding: 10px 20px 0 20px; background-color: #fff; }
+        .scan-group { padding: 10px 20px 0 20px; background-color: #fff; flex-shrink: 0; }
         .scan-group label { font-weight: bold; color: #d63384; display: block; margin-bottom: 5px; }
 
-        .order-input, .command-group { padding: 20px 20px 0 20px; }
+        .order-input, .command-group { padding: 15px 20px 0 20px; flex-shrink: 0; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
-        #item-list-content { flex-grow: 1; overflow-y: auto; padding: 20px; border: 2px dashed transparent; transition: border-color 0.2s, background-color 0.2s; }
-        #bin-area { flex-grow: 1; overflow-y: auto; padding: 0 20px 20px 20px; }
+        
+        /* 修改：列表區域樣式，加入明顯捲動條 */
+        #item-list-content { 
+            flex-grow: 1; 
+            overflow-y: scroll; /* 強制顯示捲動條 */
+            padding: 20px; 
+            border: 2px dashed transparent; 
+            transition: border-color 0.2s, background-color 0.2s;
+            /* 確保高度計算正確 */
+            min-height: 0; 
+        }
+        #bin-area { 
+            flex-grow: 1; 
+            overflow-y: scroll; /* 強制顯示捲動條 */
+            padding: 0 20px 20px 20px; 
+            min-height: 0;
+        }
+
+        /* --- 自訂捲動條樣式 (讓它更明顯) --- */
+        #item-list-content::-webkit-scrollbar, #bin-area::-webkit-scrollbar {
+            width: 12px; /* 加寬 */
+        }
+        #item-list-content::-webkit-scrollbar-track, #bin-area::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-left: 1px solid #e0e0e0;
+        }
+        #item-list-content::-webkit-scrollbar-thumb, #bin-area::-webkit-scrollbar-thumb {
+            background-color: #c1c1c1; 
+            border-radius: 6px;
+            border: 3px solid #f1f1f1; /* 創造間距感 */
+        }
+        #item-list-content::-webkit-scrollbar-thumb:hover, #bin-area::-webkit-scrollbar-thumb:hover {
+            background-color: #a0a0a0;
+        }
 
         /* --- 商品與箱子項目 --- */
         .item { background-color: #e9f7fd; border: 1px solid #bde0fe; border-radius: 4px; padding: 10px; margin-bottom: 10px; cursor: grab; user-select: none; transition: opacity 0.2s; }
@@ -96,10 +131,7 @@
             width: calc(100% - 22px); margin-bottom: 5px; padding: 5px 10px; 
             border: 1px solid #ddd; border-radius: 4px; position: relative; z-index: 1;
         }
-        /* 備註欄位的特別樣式 */
-        .bin .note-input {
-            font-size: 13px; color: #555; background-color: #fcfcfc; border-style: dotted; margin-bottom: 10px;
-        }
+        .bin .note-input { font-size: 13px; color: #555; background-color: #fcfcfc; border-style: dotted; margin-bottom: 10px; }
         
         .drag-over { background-color: #e2e6ea; border-color: #007bff !important; }
         
@@ -830,9 +862,7 @@
             
             binsArray.forEach((bin, index) => {
                 const note = bin.note || ''; 
-                // 修改：動態產生箱號格式 (共X箱-第Y箱)
                 const binName = `共${totalBins}箱-第${index+1}箱`;
-                
                 if (bin.items.size === 0) { 
                     csvContent += [orderNumber, binName, bin.tracking, note, '', '', '此箱無商品', 0].map(formatCsvField).join(',') + "\n"; 
                 } else { 
@@ -853,7 +883,6 @@
             const totalBins = AppState.bins.size;
             Array.from(AppState.bins.values()).forEach((binData, binIndex) => {
                 const noteHtml = binData.note ? `<br><strong>備註:</strong> ${binData.note}` : '';
-                // 修改：動態產生箱號格式
                 const newTitle = `共${totalBins}箱-第${binIndex + 1}箱`;
                 contentHTML += `<div class="pdf-bin"><h2>${newTitle}</h2><p><strong>運單號:</strong> ${binData.tracking || '未填寫'}${noteHtml}</p><table><thead><tr><th>品項名稱</th><th>商品編號</th><th>國際條碼</th><th>數量</th></tr></thead><tbody>`;
                 if (binData.items.size > 0) { binData.items.forEach(item => { contentHTML += `<tr><td>${item.name}</td><td>${item.code}</td><td>${item.barcode}</td><td>${item.quantity}</td></tr>`; }); } else { contentHTML += `<tr><td colspan="4" style="text-align:center;">此箱無商品</td></tr>`; }
@@ -878,10 +907,8 @@
                  const noteHtml = binData.note ? `<br><strong>備註:</strong> ${binData.note}` : '';
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i*10, (i+1)*10);
-                     // 修改：標題格式與分頁顯示
                      const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
                      const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
-                     
                      contentHTML += `<div style="page-break-after:always;width:210mm;height:132.5mm;padding:5mm;border:1px dashed #ccc;box-sizing:border-box;"><h1>${newTitle}</h1><p>訂單: ${orderNumber}</p><p style="font-size:12px">運單號: ${binData.tracking || '無'}${noteHtml}</p><table><thead><tr><th>品項</th><th>數量</th></tr></thead><tbody>`;
                      chunk.forEach(it => { contentHTML += `<tr><td>${it.name}</td><td>${it.quantity}</td></tr>`; });
                      contentHTML += `</tbody></table></div>`;
@@ -905,10 +932,8 @@
                  const noteHtml = binData.note ? `<p style="font-size:9pt;margin-top:2px;">備註: ${binData.note}</p>` : '';
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i*12, (i+1)*12);
-                     // 修改：標題格式與分頁顯示
                      const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
                      const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
-
                      contentHTML += `<div style="page-break-after:always;width:100mm;height:150mm;padding:5mm;box-sizing:border-box;"><h3>${newTitle}</h3><p>訂單: ${orderNumber}</p><table>`;
                      chunk.forEach(it => { contentHTML += `<tr><td>${it.code}</td><td>${it.quantity}</td></tr>`; });
                      contentHTML += `</table><div style="border-top:1px solid #000;margin-top:5px;padding-top:5px;text-align:center;"><p>運單號: ${binData.tracking || '無'}</p>${noteHtml}</div></div>`;
@@ -949,9 +974,7 @@
                 if(!binName) continue;
                 
                 // 修改：解析新版箱號格式 "共X箱-第Y箱" -> 取 Y
-                // 使用正則匹配 "第 Y 箱" (容錯空格)
                 const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
-                // 如果匹配不到 (舊格式)，則退回尋找任何數字
                 const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
                 
                 maxBin = Math.max(maxBin, bNum);
@@ -977,10 +1000,8 @@
                 }
 
                 if(!AppState.bins.has(bId)) {
-                    // 如果還原的是舊格式，name 可能會是 "第 X 箱"，這裡保留原始 CSV 的 name
-                    // 但因為 export 時會重新計算 "共 X 箱"，所以這裡存什麼 name 不太影響顯示
                     AppState.bins.set(bId, { 
-                        name: `第 ${bNum} 箱`, // 標準化內部名稱
+                        name: `第 ${bNum} 箱`, 
                         tracking: cols[2], 
                         note: note, 
                         items: new Map(), 
