@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧拖拽分箱工具 (V89 - 雙模式版)</title>
+    <title>智慧拖拽分箱工具 (V93 - 匯出格式優化版)</title>
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
@@ -44,7 +44,17 @@
         .list-header { padding: 0 20px; }
         .list-header h2, #bin-area-title { display: flex; justify-content: space-between; align-items: center; }
         .item-count { background-color: #6c757d; color: white; font-size: 14px; padding: 2px 8px; border-radius: 10px; }
-        #search-box, .order-input input, .command-group input { width: calc(100% - 22px); padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; margin-bottom: 10px; }
+        
+        /* 統一輸入框樣式 */
+        #search-box, #scan-input, .order-input input, .command-group input { width: calc(100% - 22px); padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; margin-bottom: 10px; }
+        
+        /* 掃描專用框特別樣式 */
+        #scan-input { border: 2px solid #ffc107; background-color: #fffbf2; }
+        #scan-input:focus { border-color: #fd7e14; outline: none; box-shadow: 0 0 5px rgba(253, 126, 20, 0.5); }
+        
+        .scan-group { padding: 10px 20px 0 20px; background-color: #fff; }
+        .scan-group label { font-weight: bold; color: #d63384; display: block; margin-bottom: 5px; }
+
         .order-input, .command-group { padding: 20px 20px 0 20px; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
         #item-list-content { flex-grow: 1; overflow-y: auto; padding: 20px; border: 2px dashed transparent; transition: border-color 0.2s, background-color 0.2s; }
@@ -63,9 +73,34 @@
         .delete-bin-btn { color: #dc3545; }
         .delete-bin-btn:hover { background-color: #f8d7da; }
         .lock-bin-btn, .complete-bin-btn { font-size: 18px; }
-        .bin.locked { border: 2px solid #28a745; box-shadow: 0 0 10px rgba(40, 167, 69, 0.5); }
-        .bin.completed { border: 2px solid #6f42c1; box-shadow: 0 0 10px rgba(111, 66, 193, 0.5); }
-        .bin .tracking-input { width: calc(100% - 22px); margin-bottom: 10px; padding: 5px 10px; border: 1px solid #ddd; border-radius: 4px; }
+        
+        /* 鎖定狀態 */
+        .bin.locked { border: 2px solid #ffc107; box-shadow: 0 0 15px rgba(255, 193, 7, 0.4); background-color: #fff9e6; }
+        
+        /* 已完成狀態 */
+        .bin.completed { 
+            border: 3px solid #28a745 !important; 
+            background-color: #d4edda !important; 
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
+            position: relative; overflow: hidden;
+        }
+        .bin.completed::after {
+            content: "已完成"; position: absolute; bottom: -5px; right: 10px; font-size: 3.5rem; font-weight: 900;
+            color: rgba(40, 167, 69, 0.2); transform: rotate(-15deg); pointer-events: none; z-index: 0;
+            border: 4px solid rgba(40, 167, 69, 0.2); padding: 5px 20px; border-radius: 10px;
+        }
+        .bin.completed .item { opacity: 0.7; background-color: rgba(255, 255, 255, 0.6); }
+
+        /* 箱子內的輸入框樣式 */
+        .bin .tracking-input, .bin .note-input { 
+            width: calc(100% - 22px); margin-bottom: 5px; padding: 5px 10px; 
+            border: 1px solid #ddd; border-radius: 4px; position: relative; z-index: 1;
+        }
+        /* 備註欄位的特別樣式 */
+        .bin .note-input {
+            font-size: 13px; color: #555; background-color: #fcfcfc; border-style: dotted; margin-bottom: 10px;
+        }
+        
         .drag-over { background-color: #e2e6ea; border-color: #007bff !important; }
         
         /* --- 彈出視窗 (Modal) --- */
@@ -100,14 +135,24 @@
                     <button id="parse-btn">解析資料</button>
                     <label for="import-csv-input" class="button-label" style="background-color:#ffc107; color:#212529;">還原CSV備份</label>
                     <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
+                    <button id="manual-add-btn" style="background-color: #17a2b8; display: none;">手動新增商品</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
+
+            <div class="scan-group">
+                <label for="scan-input">📦 商品掃描專用 (Enter 確認):</label>
+                <input type="text" id="scan-input" placeholder="在此掃描條碼：鎖定時入箱，未鎖定時新增..." autocomplete="off">
+            </div>
+
             <div class="command-group"><label for="command-input">快速指令:</label><div style="display:flex; gap: 10px;">
                 <input type="text" id="command-input" placeholder="詞 數 [來源箱] 去向箱(0=待分箱區)" style="margin-bottom:0; flex-grow:1;" title="範例:&#10;從待分箱區移出: '商品A 5 1' (5個商品A移到第1箱)&#10;從箱子移回待分箱區: '商品A 3 2 0' (3個商品A從第2箱移回)&#10;箱子之間移動: '商品A 2 1 3' (2個商品A從第1箱移到第3箱)">
                 <button id="execute-command-btn">執行</button>
             </div></div>
-            <div class="list-header"><h2 id="pool-title">待分箱區</h2><input type="text" id="search-box" placeholder="🔍 在此透過關鍵字篩選商品 (可用 、 分隔)" style="margin: 0 20px 10px 20px; width: calc(100% - 40px);"></div>
+            <div class="list-header">
+                <h2 id="pool-title">待分箱區</h2>
+                <input type="text" id="search-box" placeholder="🔍 在此輸入關鍵字「篩選」列表..." style="margin: 0 20px 10px 20px; width: calc(100% - 40px);">
+            </div>
             <div id="item-list-content"></div>
         </div>
         <div id="bin-area-container" class="panel">
@@ -144,19 +189,36 @@
             <button id="choice-cancel-btn" style="background-color: #6c757d; margin-top: 10px; width: 100%;">取消</button>
         </div>
     </div>
+    
+    <div id="manual-add-modal" class="modal-overlay">
+        <div class="modal-content" style="width: 400px; text-align: left;">
+            <h3>新增商品 (入倉模式)</h3>
+            <label for="new-item-code">商品編號:</label>
+            <input type="text" id="new-item-code" style="width: 100%; margin-bottom: 10px;" placeholder="輸入編號">
+            <label for="new-item-name">商品名稱:</label>
+            <input type="text" id="new-item-name" style="width: 100%; margin-bottom: 10px;" placeholder="輸入名稱">
+            <label for="new-item-qty">數量:</label>
+            <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 20px;" min="1" value="1">
+            <div class="button-group" style="justify-content: center;">
+                <button id="manual-add-confirm-btn">確認新增</button>
+                <button id="manual-add-cancel-btn" style="background-color: #6c757d;">取消</button>
+            </div>
+        </div>
+    </div>
 
 <script>
     // --- DOM 元素獲取 ---
     const orderNumberInput = document.getElementById('order-number-input');
     const dataInput = document.getElementById('data-input');
     const parseBtn = document.getElementById('parse-btn');
-    const modeSwitchBtn = document.getElementById('mode-switch-btn'); // 新增
+    const modeSwitchBtn = document.getElementById('mode-switch-btn'); 
     const addBinBtn = document.getElementById('add-bin-btn');
     const clearDataBtn = document.getElementById('clear-data-btn');
     const quickAddBinsBtn = document.getElementById('quick-add-bins-btn');
     const itemListContent = document.getElementById('item-list-content');
     const binArea = document.getElementById('bin-area');
     const searchBox = document.getElementById('search-box');
+    const scanInput = document.getElementById('scan-input'); // 掃描輸入框
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -173,6 +235,15 @@
     const choiceList = document.getElementById('choice-list');
     const choiceCancelBtn = document.getElementById('choice-cancel-btn');
     const importCsvInput = document.getElementById('import-csv-input');
+    
+    // --- 手動新增功能 DOM ---
+    const manualAddBtn = document.getElementById('manual-add-btn');
+    const manualAddModal = document.getElementById('manual-add-modal');
+    const manualAddConfirmBtn = document.getElementById('manual-add-confirm-btn');
+    const manualAddCancelBtn = document.getElementById('manual-add-cancel-btn');
+    const newItemCodeInput = document.getElementById('new-item-code');
+    const newItemNameInput = document.getElementById('new-item-name');
+    const newItemQtyInput = document.getElementById('new-item-qty');
     
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null };
     let binCounter = 0;
@@ -239,8 +310,22 @@
                 AppState.bins.get(binId).tracking = e.target.value; 
                 saveStateToLocalStorage();
             });
+
+            // --- 新增：備註欄位 ---
+            const noteInput = document.createElement('input');
+            noteInput.type = 'text';
+            noteInput.className = 'note-input';
+            noteInput.placeholder = '備註 (選填)...';
+            noteInput.value = binData.note || ''; // 如果沒有備註則為空
+            noteInput.addEventListener('input', (e) => {
+                AppState.bins.get(binId).note = e.target.value;
+                saveStateToLocalStorage();
+            });
+
             binEl.appendChild(title);
             binEl.appendChild(trackingInput);
+            binEl.appendChild(noteInput); // 將備註欄位加入 DOM
+            
             binData.items.forEach(item => {
                 binEl.appendChild(createItemElement(item, binId));
             });
@@ -370,82 +455,42 @@
     }
 
     // --- 解析邏輯 ---
-    
-    // 原始解析邏輯 (出貨模式)
     function intelligentParse(rawLines) {
         const poolMap = new Map();
         const dataLines = rawLines.map(line => line.trim()).filter(line => line);
-
         for (const line of dataLines) {
             const columns = line.split('\t');
             let item = null;
-            
-            // Format: Product Code, Barcode, Product Name, Quantity
             if (columns.length === 4) {
                 const quantity = parseInt(columns[3], 10);
                 if (!isNaN(quantity)) {
-                    item = {
-                        code: columns[0].trim(),
-                        barcode: columns[1].trim() || 'NA',
-                        name: columns[2].trim(),
-                        quantity: quantity
-                    };
+                    item = { code: columns[0].trim(), barcode: columns[1].trim() || 'NA', name: columns[2].trim(), quantity: quantity };
                 }
             } else if (columns.length === 3) {
                 const quantity = parseInt(columns[2], 10);
                 if (!isNaN(quantity)) {
-                    item = {
-                        code: columns[0].trim(),
-                        barcode: 'NA',
-                        name: columns[1].trim(),
-                        quantity: quantity
-                    };
+                    item = { code: columns[0].trim(), barcode: 'NA', name: columns[1].trim(), quantity: quantity };
                 }
             }
-
             if (item && item.code && item.name) {
-                if (poolMap.has(item.code)) {
-                    poolMap.get(item.code).quantity += item.quantity;
-                } else {
-                    poolMap.set(item.code, item);
-                }
+                if (poolMap.has(item.code)) { poolMap.get(item.code).quantity += item.quantity; } else { poolMap.set(item.code, item); }
             }
         }
         return poolMap;
     }
 
-    // 新增：入倉模式解析邏輯
     function parseInboundData(rawLines) {
         const poolMap = new Map();
-        // 移除空行
         const dataLines = rawLines.map(line => line.trim()).filter(line => line);
-
-        if (dataLines.length % 4 !== 0) {
-            showToast("警告：入倉資料行數不是4的倍數，解析可能會不完整！", "error");
-        }
-
-        // 步長為 4，依序讀取 編號, 名稱, 數量, 數量2(忽略)
+        if (dataLines.length % 4 !== 0) { showToast("警告：入倉資料行數不是4的倍數，解析可能會不完整！", "error"); }
         for (let i = 0; i < dataLines.length; i += 4) {
             if (i + 3 >= dataLines.length) break;
-
             const code = dataLines[i];
             const name = dataLines[i+1];
             const qtyStr = dataLines[i+2];
-            // const qty2 = dataLines[i+3]; // 忽略此行
-
             const quantity = parseInt(qtyStr, 10);
-            
             if (code && name && !isNaN(quantity)) {
-                if (poolMap.has(code)) {
-                    poolMap.get(code).quantity += quantity;
-                } else {
-                    poolMap.set(code, {
-                        code: code,
-                        barcode: 'NA', // 入倉格式中無條碼，預設為 NA
-                        name: name,
-                        quantity: quantity
-                    });
-                }
+                if (poolMap.has(code)) { poolMap.get(code).quantity += quantity; } else { poolMap.set(code, { code: code, barcode: 'NA', name: name, quantity: quantity }); }
             }
         }
         return poolMap;
@@ -478,7 +523,7 @@
         for (let i = 0; i < num; i++) {
             binCounter++;
             const binId = `bin-${binCounter}`;
-            AppState.bins.set(binId, { name: `第 ${binCounter} 箱`, tracking: '', items: new Map(), completed: false });
+            AppState.bins.set(binId, { name: `第 ${binCounter} 箱`, tracking: '', items: new Map(), completed: false, note: '' });
         }
         render();
         saveStateToLocalStorage();
@@ -486,38 +531,29 @@
     }
 
     // --- 事件監聽器綁定 ---
-    
-    // 模式切換按鈕
     modeSwitchBtn.addEventListener('click', () => {
         if (currentMode === 'outbound') {
             currentMode = 'inbound';
             modeSwitchBtn.textContent = '目前模式：入倉模式';
             modeSwitchBtn.classList.add('inbound-mode');
             dataInput.placeholder = '1. 在此貼上入倉資料 (格式：編號\\n名稱\\n數量\\n數量2)...';
+            manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【入倉模式】', 'info');
         } else {
             currentMode = 'outbound';
             modeSwitchBtn.textContent = '目前模式：出貨模式';
             modeSwitchBtn.classList.remove('inbound-mode');
             dataInput.placeholder = '1. 在此貼上商品資料...';
+            manualAddBtn.style.display = 'none';
             showToast('已切換至【出貨模式】', 'info');
         }
     });
 
     parseBtn.addEventListener('click', () => {
         const rawLines = dataInput.value.trim().split('\n');
-        if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === '')) {
-            showToast("請先輸入資料！", "error");
-            return;
-        }
-
+        if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === '')) { showToast("請先輸入資料！", "error"); return; }
         let parsedMap;
-        if (currentMode === 'inbound') {
-            parsedMap = parseInboundData(rawLines);
-        } else {
-            parsedMap = intelligentParse(rawLines);
-        }
-
+        if (currentMode === 'inbound') { parsedMap = parseInboundData(rawLines); } else { parsedMap = intelligentParse(rawLines); }
         if (parsedMap.size > 0) {
             AppState.pool = parsedMap;
             AppState.bins.clear();
@@ -535,39 +571,65 @@
     addBinBtn.addEventListener('click', () => {
         binCounter++;
         const binId = `bin-${binCounter}`;
-        AppState.bins.set(binId, { name: `第 ${binCounter} 箱`, tracking: '', items: new Map(), completed: false });
+        AppState.bins.set(binId, { name: `第 ${binCounter} 箱`, tracking: '', items: new Map(), completed: false, note: '' });
         render();
         saveStateToLocalStorage();
     });
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
+    
+    // --- 搜尋框邏輯 (僅篩選) ---
     searchBox.addEventListener('input', () => {
         const searchTerm = searchBox.value.trim();
-        
-        // --- 鎖定掃描入箱邏輯 ---
-        if (AppState.lockedBinId && searchTerm !== '') {
-            const lockedBin = AppState.bins.get(AppState.lockedBinId);
-            if (lockedBin) {
-                // 尋找完全相符的商品 (條碼或編號)
-                const matchedItem = Array.from(AppState.pool.values()).find(
-                    item => item.code === searchTerm || item.barcode === searchTerm
-                );
-
-                if (matchedItem) {
-                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
-                    showToast(`已將 1 個 "${matchedItem.name}" 移至 ${lockedBin.name}`, 'success');
-                    searchBox.value = ''; 
-                    currentSearchTerm = '';
-                    render(); // 重新渲染以更新畫面
-                    return; // 中斷後續的篩選邏輯
-                }
-            }
-        }
-        
-        // --- 一般篩選邏輯 ---
         currentSearchTerm = searchTerm.toLowerCase();
         render();
     });
+
+    // --- 掃描框邏輯 (入箱或新增) ---
+    scanInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault(); 
+        const codeToScan = scanInput.value.trim();
+        if (!codeToScan) return;
+
+        if (AppState.lockedBinId) {
+            const lockedBin = AppState.bins.get(AppState.lockedBinId);
+            if (lockedBin) {
+                const matchedItem = Array.from(AppState.pool.values()).find(
+                    item => item.code === codeToScan || item.barcode === codeToScan
+                );
+                if (matchedItem) {
+                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
+                    showToast(`已移動 1 個 "${matchedItem.name}" 至 ${lockedBin.name}`, 'success');
+                } else {
+                    showToast(`在待分箱區找不到商品 (代碼: ${codeToScan})`, 'error');
+                }
+            }
+        } else {
+            let existingItem = AppState.pool.get(codeToScan);
+            if (!existingItem) {
+                existingItem = Array.from(AppState.pool.values()).find(item => item.barcode === codeToScan);
+            }
+
+            if (existingItem) {
+                existingItem.quantity += 1;
+                showToast(`商品 "${existingItem.name}" 數量 +1 (目前: ${existingItem.quantity})`, 'success');
+            } else {
+                const newItem = {
+                    code: codeToScan,
+                    barcode: 'NA',
+                    name: `掃描新增商品 (${codeToScan})`,
+                    quantity: 1
+                };
+                AppState.pool.set(codeToScan, newItem);
+                showToast(`已新增商品：${newItem.name}`, 'success');
+            }
+            render();
+            saveStateToLocalStorage();
+        }
+        scanInput.value = '';
+    });
+
     binArea.addEventListener('click', (e) => {
         const binEl = e.target.closest('.bin');
         if (!binEl) return;
@@ -577,12 +639,8 @@
 
         if (e.target.classList.contains('delete-bin-btn')) {
             if (confirm(`確定要刪除「${binData.name}」嗎？\n(箱內所有商品將會被移回待分箱區)`)) {
-                if (binData.items.size > 0) {
-                    returnItemsToPool(Array.from(binData.items.values()));
-                }
-                if (AppState.lockedBinId === binId) {
-                    AppState.lockedBinId = null; // 如果刪除的是鎖定的箱子，則解鎖
-                }
+                if (binData.items.size > 0) { returnItemsToPool(Array.from(binData.items.values())); }
+                if (AppState.lockedBinId === binId) { AppState.lockedBinId = null; }
                 AppState.bins.delete(binId);
                 reIndexBins();
                 render();
@@ -590,21 +648,24 @@
             }
         } else if (e.target.classList.contains('lock-bin-btn')) {
             if (AppState.lockedBinId === binId) {
-                AppState.lockedBinId = null; // 點擊已鎖定的箱子 -> 解鎖
+                AppState.lockedBinId = null;
                 showToast('箱子已解鎖', 'info');
             } else {
-                AppState.lockedBinId = binId; // 點擊未鎖定的箱子 -> 鎖定
-                showToast(`${binData.name} 已鎖定！請開始掃描商品。`, 'success');
+                AppState.lockedBinId = binId;
+                showToast(`${binData.name} 已鎖定！請使用上方黃色掃描框入箱。`, 'success');
+                scanInput.focus();
             }
             render();
             saveStateToLocalStorage();
         } else if (e.target.classList.contains('complete-bin-btn')) {
-            binData.completed = !binData.completed; // 切換完成狀態
+            binData.completed = !binData.completed;
             showToast(binData.completed ? `${binData.name} 已標示為完成` : `${binData.name} 已取消完成標示`, 'info');
             render();
             saveStateToLocalStorage();
         }
     });
+
+    // ... (Drag & Drop) ...
     document.addEventListener('dragstart', e => {
         const itemEl = e.target.closest('.item');
         if (itemEl) {
@@ -680,377 +741,182 @@
     modalCancelBtn.addEventListener('click', hideQuantityModal);
     choiceCancelBtn.addEventListener('click', hideChoiceModal);
 
-    // --- 快速指令 ---
+    manualAddBtn.addEventListener('click', () => {
+        newItemCodeInput.value = '';
+        newItemNameInput.value = '';
+        newItemQtyInput.value = '1';
+        manualAddModal.style.display = 'flex';
+        newItemCodeInput.focus();
+    });
+    manualAddCancelBtn.addEventListener('click', () => { manualAddModal.style.display = 'none'; });
+    manualAddConfirmBtn.addEventListener('click', () => {
+        const code = newItemCodeInput.value.trim();
+        const name = newItemNameInput.value.trim();
+        const qty = parseInt(newItemQtyInput.value, 10);
+        if (!code || !name) { showToast("請輸入完整的編號與名稱！", "error"); return; }
+        if (isNaN(qty) || qty <= 0) { showToast("數量必須大於 0！", "error"); return; }
+        if (AppState.pool.has(code)) {
+            const existingItem = AppState.pool.get(code);
+            existingItem.quantity += qty;
+            showToast(`商品 ${code} 已存在，數量已增加 ${qty}。`, "success");
+        } else {
+            const newItem = { code: code, barcode: 'NA', name: name, quantity: qty };
+            AppState.pool.set(code, newItem);
+            showToast(`已新增商品：${name}`, "success");
+        }
+        render();
+        saveStateToLocalStorage();
+        manualAddModal.style.display = 'none';
+    });
+    
     function processCommand(commandText) {
         const tokens = commandText.trim().split(/\s+/).filter(Boolean);
-        if (tokens.length < 3) {
-            showToast("指令格式錯誤！請檢查格式。", 'error');
-            return false;
-        }
-
+        if (tokens.length < 3) { showToast("指令格式錯誤！請檢查格式。", 'error'); return false; }
         let sourceId, targetId, searchTerm, quantityToMove;
         const isNumeric = (str) => str !== null && str.trim() !== '' && !isNaN(str) && !isNaN(parseFloat(str));
-
         const L1 = tokens[tokens.length - 1];
         const L2 = tokens[tokens.length - 2];
         const L3 = tokens.length >= 4 ? tokens[tokens.length - 3] : null;
 
         if (tokens.length >= 4 && isNumeric(L1) && isNumeric(L2) && isNumeric(L3)) {
-            const fromBinNum = L2;
-            const toBinNum = L1;
-            
+            const fromBinNum = L2; const toBinNum = L1;
             sourceId = `bin-${fromBinNum}`;
-            
-            if (toBinNum === '0') {
-                targetId = 'pool';
-            } else {
-                targetId = `bin-${toBinNum}`;
-                if (!AppState.bins.has(targetId)) {
-                    showToast(`指令錯誤：找不到目標箱號 ${toBinNum}！`, 'error');
-                    return false;
-                }
-            }
-            
-            quantityToMove = parseInt(L3);
-            searchTerm = tokens.slice(0, tokens.length - 3).join(' ');
-        } 
-        else if (isNumeric(L1) && isNumeric(L2)) {
-            const toBinNum = L1;
-            sourceId = 'pool';
-            targetId = `bin-${toBinNum}`;
-             if (!AppState.bins.has(targetId)) {
-                showToast(`指令錯誤：找不到目標箱號 ${toBinNum}！`, 'error');
-                return false;
-            }
-            quantityToMove = parseInt(L2);
-            searchTerm = tokens.slice(0, tokens.length - 2).join(' ');
-        }
-        else {
-            showToast("指令格式無法識別！\n請使用: (詞 數 去向箱) 或 (詞 數 來源箱 去向箱/0)", "error");
-            return false;
-        }
+            if (toBinNum === '0') { targetId = 'pool'; } else { targetId = `bin-${toBinNum}`; if (!AppState.bins.has(targetId)) { showToast(`指令錯誤：找不到目標箱號 ${toBinNum}！`, 'error'); return false; } }
+            quantityToMove = parseInt(L3); searchTerm = tokens.slice(0, tokens.length - 3).join(' ');
+        } else if (isNumeric(L1) && isNumeric(L2)) {
+            const toBinNum = L1; sourceId = 'pool'; targetId = `bin-${toBinNum}`;
+            if (!AppState.bins.has(targetId)) { showToast(`指令錯誤：找不到目標箱號 ${toBinNum}！`, 'error'); return false; }
+            quantityToMove = parseInt(L2); searchTerm = tokens.slice(0, tokens.length - 2).join(' ');
+        } else { showToast("指令格式無法識別！\n請使用: (詞 數 去向箱) 或 (詞 數 來源箱 去向箱/0)", "error"); return false; }
         
         const sourceMap = (sourceId === 'pool') ? AppState.pool : AppState.bins.get(sourceId)?.items;
-
         if (!sourceMap) { showToast(`指令錯誤：找不到來源「${sourceId}」！`, 'error'); return false; }
         if (isNaN(quantityToMove) || quantityToMove <= 0) { showToast("指令錯誤：數量必須是正整數。", 'error'); return false; }
-        if (searchTerm.trim() === '') { showToast("指令錯誤：搜尋關鍵字不能為空。", 'error'); return false; }
-
         const searchLower = searchTerm.toLowerCase();
-        const results = Array.from(sourceMap.values()).filter(item => 
-            item.name.toLowerCase().includes(searchLower) || 
-            item.code.toLowerCase().includes(searchLower) ||
-            (item.barcode && item.barcode.toLowerCase().includes(searchLower))
-        );
-        
-        if (results.length === 0) {
-            showToast(`在來源 (${sourceId}) 找不到符合 "${searchTerm}" 的商品`, 'error');
-            return false;
-        }
-        
+        const results = Array.from(sourceMap.values()).filter(item => item.name.toLowerCase().includes(searchLower) || item.code.toLowerCase().includes(searchLower) || (item.barcode && item.barcode.toLowerCase().includes(searchLower)));
+        if (results.length === 0) { showToast(`在來源 (${sourceId}) 找不到符合 "${searchTerm}" 的商品`, 'error'); return false; }
         if (results.length === 1) {
             const targetItem = results[0];
-            if (quantityToMove > targetItem.quantity) {
-                showToast(`移動數量 (${quantityToMove}) 超過現有數量 (${targetItem.quantity})`, 'error');
-                return false;
-            }
+            if (quantityToMove > targetItem.quantity) { showToast(`移動數量 (${quantityToMove}) 超過現有數量 (${targetItem.quantity})`, 'error'); return false; }
             moveItem(targetItem.code, sourceId, targetId, quantityToMove);
             showToast(`已將 ${quantityToMove} 個 "${targetItem.name}" 執行移動。`, 'success');
             return true;
         }
-        
-        if (results.length > 1) {
-            showToast(`發現 ${results.length} 個符合項目，請選擇...`);
-            showChoiceModal(results, quantityToMove, sourceId, targetId);
-            return true;
-        }
-
+        if (results.length > 1) { showToast(`發現 ${results.length} 個符合項目，請選擇...`); showChoiceModal(results, quantityToMove, sourceId, targetId); return true; }
         return false;
     }
-
     executeCommandBtn.addEventListener('click', () => { if (processCommand(commandInput.value)) { commandInput.value = ''; } });
     commandInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); executeCommandBtn.click(); } });
-    
-    // --- 匯出功能 ---
+
     function setupExports() {
         const exportBtn = document.getElementById('export-btn');
         const exportA4PdfBtn = document.getElementById('export-a4-pdf-btn');
         const exportA5PdfBtn = document.getElementById('export-a5-pdf-btn');
         const exportThermalPdfBtn = document.getElementById('export-thermal-pdf-btn');
-
+        
         function generateExportFilename(extension) {
             const now = new Date();
-            const hh = String(now.getHours()).padStart(2, '0');
-            const mm = String(now.getMinutes()).padStart(2, '0');
-            const ss = String(now.getSeconds()).padStart(2, '0');
             const orderNumber = orderNumberInput.value.trim() || 'NoOrder';
-            return `${orderNumber}_${hh}${mm}${ss}_packing_list${extension}`;
+            return `${orderNumber}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}_packing_list${extension}`;
         }
-
         function exportCSV() {
             if (AppState.bins.size === 0) { showToast("沒有任何已分箱的資料可以匯出！", "error"); return; }
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
-            let csvContent = "\uFEFF";
-            csvContent += "訂單號碼,箱號,運單號,商品編號,國際條碼,品項名稱,數量\n";
-
-            const formatCsvField = (value) => {
-                if (value === null || value === undefined) {
-                    return '';
-                }
-                let stringValue = String(value);
-                stringValue = stringValue.replace(/"/g, '""');
-                if (stringValue.search(/("|,|\n)/g) >= 0) {
-                    stringValue = `"${stringValue}"`;
-                }
-                return stringValue;
-            };
-
-            AppState.bins.forEach(binData => {
-                if (binData.items.size === 0) {
-                    const row = [orderNumber, binData.name, binData.tracking, '', '', '此箱無商品', 0].map(formatCsvField).join(',');
-                    csvContent += row + "\n";
-                } else {
-                    binData.items.forEach(item => {
-                        const row = [
-                            orderNumber, binData.name, binData.tracking,
-                            item.code, item.barcode, item.name, item.quantity
-                        ].map(formatCsvField).join(',');
-                        csvContent += row + "\n";
-                    });
+            const binsArray = Array.from(AppState.bins.values());
+            const totalBins = binsArray.length;
+            
+            let csvContent = "\uFEFF訂單號碼,箱號,運單號,備註,商品編號,國際條碼,品項名稱,數量\n";
+            const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
+            
+            binsArray.forEach((bin, index) => {
+                const note = bin.note || ''; 
+                // 修改：動態產生箱號格式 (共X箱-第Y箱)
+                const binName = `共${totalBins}箱-第${index+1}箱`;
+                
+                if (bin.items.size === 0) { 
+                    csvContent += [orderNumber, binName, bin.tracking, note, '', '', '此箱無商品', 0].map(formatCsvField).join(',') + "\n"; 
+                } else { 
+                    bin.items.forEach(item => { 
+                        csvContent += [orderNumber, binName, bin.tracking, note, item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n"; 
+                    }); 
                 }
             });
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = generateExportFilename('.csv');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+            link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
-
-        function exportA4PDF() {
+        function exportA4PDF() { 
             if (AppState.bins.size === 0 && AppState.pool.size === 0) { showToast("沒有任何資料可以匯出！", "error"); return; }
-            const btn = document.getElementById('export-a4-pdf-btn');
-            btn.disabled = true; btn.textContent = '準備預覽...';
-            const poolTotal = Array.from(AppState.pool.values()).reduce((sum, item) => sum + item.quantity, 0);
-            let binsTotal = 0;
-            AppState.bins.forEach(binData => { binsTotal += Array.from(binData.items.values()).reduce((sum, item) => sum + item.quantity, 0); });
-            const orderTotal = poolTotal + binsTotal;
+            const btn = document.getElementById('export-a4-pdf-btn'); btn.disabled = true; btn.textContent = '準備預覽...';
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const exportDate = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-            
-            const printStyles = `<style>@media print { body { margin: 0; -webkit-print-color-adjust: exact; } } body{font-family:'Helvetica','Arial','Microsoft JhengHei',sans-serif;font-size:10px;}.pdf-container{margin:20px;}.pdf-header h1{font-size:24px;}.pdf-header p{font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #ddd;padding:6px;text-align:left;word-break:break-all;}th{background-color:#f8f8f8;}.pdf-bin{page-break-inside:avoid; margin-bottom: 20px; border: 1px solid #eee; padding: 15px; border-radius: 8px;}</style>`;
-            
-            let contentHTML = `<div class="pdf-container"><div class="pdf-header"><h1>分箱明細總表</h1><p><strong>訂單號碼:</strong> ${orderNumber}</p><p><strong>匯出日期:</strong> ${exportDate}</p><p><strong>訂單總數:</strong> ${orderTotal}</p></div>`;
+            let contentHTML = `<div class="pdf-container"><div class="pdf-header"><h1>分箱明細總表</h1><p><strong>訂單號碼:</strong> ${orderNumber}</p><p><strong>匯出日期:</strong> ${exportDate}</p></div>`;
             const totalBins = AppState.bins.size;
             Array.from(AppState.bins.values()).forEach((binData, binIndex) => {
-                const newTitle = `第 ${totalBins}-${binIndex + 1} 箱`;
-                contentHTML += `<div class="pdf-bin"><h2>${newTitle}</h2><p><strong>運單號:</strong> ${binData.tracking || '未填寫'}</p><table><thead><tr><th>品項名稱</th><th>商品編號</th><th>國際條碼</th><th>數量</th></tr></thead><tbody>`;
-                if (binData.items.size > 0) {
-                    binData.items.forEach(item => { contentHTML += `<tr><td>${item.name}</td><td>${item.code}</td><td>${item.barcode}</td><td>${item.quantity}</td></tr>`; });
-                } else {
-                    contentHTML += `<tr><td colspan="4" style="text-align:center;">此箱無商品</td></tr>`;
-                }
+                const noteHtml = binData.note ? `<br><strong>備註:</strong> ${binData.note}` : '';
+                // 修改：動態產生箱號格式
+                const newTitle = `共${totalBins}箱-第${binIndex + 1}箱`;
+                contentHTML += `<div class="pdf-bin"><h2>${newTitle}</h2><p><strong>運單號:</strong> ${binData.tracking || '未填寫'}${noteHtml}</p><table><thead><tr><th>品項名稱</th><th>商品編號</th><th>國際條碼</th><th>數量</th></tr></thead><tbody>`;
+                if (binData.items.size > 0) { binData.items.forEach(item => { contentHTML += `<tr><td>${item.name}</td><td>${item.code}</td><td>${item.barcode}</td><td>${item.quantity}</td></tr>`; }); } else { contentHTML += `<tr><td colspan="4" style="text-align:center;">此箱無商品</td></tr>`; }
                 contentHTML += `</tbody></table></div>`;
             });
             contentHTML += '</div>';
-
             const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                showToast("無法打開預覽視窗，請檢查彈出視窗是否被封鎖。", "error");
-                btn.disabled = false; btn.textContent = '匯出 PDF (A4總表)';
-                return;
-            }
-            printWindow.document.write(`<!DOCTYPE html><html lang="zh-Hant"><head><title>A4分箱總表 - ${orderNumber}</title>${printStyles}</head><body>${contentHTML}</body></html>`);
-            printWindow.document.close();
-            setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500);
-            btn.disabled = false; btn.textContent = '匯出 PDF (A4總表)';
+            if(!printWindow){showToast("無法打開預覽，請檢查彈窗封鎖。", "error"); btn.disabled=false; btn.textContent='匯出 PDF (A4總表)'; return;}
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>A4分箱表</title><style>@media print { body { margin: 0; } } body{font-family:sans-serif;font-size:10px;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:5px;}.pdf-bin{page-break-inside:avoid;margin-bottom:20px;border:1px solid #eee;padding:10px;}</style></head><body>${contentHTML}</body></html>`);
+            printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); btn.disabled=false; btn.textContent='匯出 PDF (A4總表)';
         }
-
         function exportA5BoxLabelsPDF() {
-            if (AppState.bins.size === 0) { showToast("沒有任何已分箱的資料可以匯出！", "error"); return; }
-            const btn = document.getElementById('export-a5-pdf-btn');
-            btn.disabled = true; btn.textContent = '準備預覽...';
-            const orderNumber = orderNumberInput.value.trim() || 'N/A';
-            const printStyles = `<style>@media print{body{margin:0;-webkit-print-color-adjust:exact}}*{box-sizing:border-box}body{font-family:'Helvetica','Arial','Microsoft JhengHei',sans-serif}.a5-label-page{width:210mm;height:132.5mm;padding:7mm;page-break-after:always;border:1px dashed #ccc;margin:10mm auto}.a5-label-page:last-child{page-break-after:auto}.header,.footer{text-align:center}.header h1{margin:0 0 5px 0;font-size:26px}.header p{margin:0;font-size:16px}.content{margin-top:5px}.content table{width:100%;border-collapse:collapse}.content th,.content td{border:1px solid #ccc;padding:3px;text-align:left;font-size:12px;line-height:1.2}.content th{background-color:#f2f2f2}.footer{margin-top:15px;padding-top:8px}.footer p{font-size:14px;margin:3px 0}.footer-table{display:inline-table;text-align:left;font-size:16px;margin-top:5px}.footer-table td{padding:3px 5px}</style>`;
-            
-            let contentHTML = ``;
-            const binsArray = Array.from(AppState.bins.values());
-            const totalBins = binsArray.length;
-            binsArray.forEach((binData, binIndex) => {
-                const itemsArray = Array.from(binData.items.values());
-                const binTotal = itemsArray.reduce((s, i) => s + i.quantity, 0);
-                const chunkSize = 10;
-                const totalPagesForBin = Math.max(1, Math.ceil(itemsArray.length / chunkSize));
-                for (let i = 0; i < totalPagesForBin; i++) {
-                    const itemChunk = itemsArray.slice(i * chunkSize, (i + 1) * chunkSize);
-                    const newTitle = `第 ${totalBins}-${binIndex + 1} 箱 <span style="font-size: 60%;">(${i + 1}/${totalPagesForBin})</span>`;
-                    const footerHTML = `<div class="footer"><p><strong>本箱總數: ${binTotal} 件</strong></p><table class="footer-table"><tbody><tr><td><strong>運單號:</strong></td><td>${binData.tracking || '___________________'}</td></tr><tr><td><strong>簽收:</strong></td><td>___________________</td></tr></tbody></table></div>`;
-                    contentHTML += `<div class="a5-label-page"><div class="header"><h1>${newTitle}</h1><p><strong>訂單號碼:</strong> ${orderNumber}</p></div><div class="content"><table><thead><tr><th style="width:80%">品項名稱</th><th>数量</th></tr></thead><tbody>`;
-                    if (itemChunk.length > 0) {
-                        itemChunk.forEach(item => { contentHTML += `<tr><td>${item.name}</td><td style="text-align:center">${item.quantity}</td></tr>`; });
-                    } else {
-                        contentHTML += `<tr><td colspan="2" style="text-align:center;height:50mm">此箱無商品</td></tr>`;
-                    }
-                    contentHTML += `</tbody></table></div>${footerHTML}</div>`;
-                }
-            });
-
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                showToast("無法打開預覽視窗，請檢查彈出視窗是否被封鎖。", "error");
-                btn.disabled = false; btn.textContent = '匯出 PDF (A5箱貼)';
-                return;
-            }
-            printWindow.document.write(`<!DOCTYPE html><html lang="zh-Hant"><head><title>列印箱貼 - ${orderNumber}</title>${printStyles}</head><body>${contentHTML}</body></html>`);
-            printWindow.document.close();
-            setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500);
-            btn.disabled = false; btn.textContent = '匯出 PDF (A5箱貼)';
+             if (AppState.bins.size === 0) { showToast("無資料！", "error"); return; }
+             const btn = document.getElementById('export-a5-pdf-btn'); btn.disabled=true; btn.textContent='準備預覽...';
+             const orderNumber = orderNumberInput.value.trim() || 'N/A';
+             let contentHTML = ``;
+             const binsArray = Array.from(AppState.bins.values());
+             const totalBins = binsArray.length;
+             binsArray.forEach((binData, binIndex) => {
+                 const itemsArray = Array.from(binData.items.values());
+                 const totalPages = Math.max(1, Math.ceil(itemsArray.length / 10));
+                 const noteHtml = binData.note ? `<br><strong>備註:</strong> ${binData.note}` : '';
+                 for(let i=0; i<totalPages; i++) {
+                     const chunk = itemsArray.slice(i*10, (i+1)*10);
+                     // 修改：標題格式與分頁顯示
+                     const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
+                     const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
+                     
+                     contentHTML += `<div style="page-break-after:always;width:210mm;height:132.5mm;padding:5mm;border:1px dashed #ccc;box-sizing:border-box;"><h1>${newTitle}</h1><p>訂單: ${orderNumber}</p><p style="font-size:12px">運單號: ${binData.tracking || '無'}${noteHtml}</p><table><thead><tr><th>品項</th><th>數量</th></tr></thead><tbody>`;
+                     chunk.forEach(it => { contentHTML += `<tr><td>${it.name}</td><td>${it.quantity}</td></tr>`; });
+                     contentHTML += `</tbody></table></div>`;
+                 }
+             });
+             const w = window.open('','_blank'); 
+             if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 PDF (A5箱貼)'; return;}
+             w.document.write(`<html><head><style>table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc}</style></head><body>${contentHTML}</body></html>`); w.document.close(); setTimeout(() => { w.print(); }, 500); btn.disabled=false; btn.textContent='匯出 PDF (A5箱貼)';
         }
-        
-        // =======================================================================
-        // ========== 最終佈局修正：改用絕對定位 ==========
-        // =======================================================================
+
         function exportThermalLabelsPDF() {
-            if (AppState.bins.size === 0) { showToast("沒有任何已分箱的資料可以匯出！", "error"); return; }
-            const btn = document.getElementById('export-thermal-pdf-btn');
-            btn.disabled = true; btn.textContent = '準備預覽...';
+            if (AppState.bins.size === 0) { showToast("無資料！", "error"); return; }
+            const btn = document.getElementById('export-thermal-pdf-btn'); btn.disabled=true; btn.textContent = '準備預覽...';
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
+             let contentHTML = ``;
+             const binsArray = Array.from(AppState.bins.values());
+             const totalBins = binsArray.length;
+             binsArray.forEach((binData, binIndex) => {
+                 const itemsArray = Array.from(binData.items.values());
+                 const totalPages = Math.max(1, Math.ceil(itemsArray.length / 12));
+                 const noteHtml = binData.note ? `<p style="font-size:9pt;margin-top:2px;">備註: ${binData.note}</p>` : '';
+                 for(let i=0; i<totalPages; i++) {
+                     const chunk = itemsArray.slice(i*12, (i+1)*12);
+                     // 修改：標題格式與分頁顯示
+                     const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
+                     const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
 
-            const chunkSize = 12;
-
-            const printStyles = `<style>
-                @page { size: 100mm 150mm; margin: 0; } /* 移除頁邊距，由內部控制 */
-                @media print { body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; } }
-                * { box-sizing: border-box; }
-                body { font-family: 'Helvetica', 'Arial', 'Microsoft JhengHei', sans-serif; }
-                
-                /* --- 核心佈局修正：改用絕對定位 --- */
-                .thermal-label {
-                    width: 100mm;
-                    height: 150mm;
-                    padding: 5mm;
-                    position: relative; /* 建立定位基準 */
-                    page-break-after: always;
-                    border-right: 1px dashed #ccc; /* 視覺輔助線 */
-                }
-                .thermal-label:last-child { page-break-after: auto; }
-
-                .header {
-                    position: absolute;
-                    top: 5mm;
-                    left: 5mm;
-                    right: 5mm;
-                    height: 20mm; /* 給定一個固定高度 */
-                    text-align: center;
-                    border-bottom: 1px solid #000;
-                }
-                .header h1 { margin: 0; padding-top: 2mm; font-size: 20pt; }
-                .header p { margin: 0; font-size: 10pt; }
-
-                .content {
-                    position: absolute;
-                    top: 25mm; /* header 高度 20mm + 間距 5mm */
-                    bottom: 20mm; /* footer 高度 15mm + 間距 5mm */
-                    left: 5mm;
-                    right: 5mm;
-                    overflow-y: hidden; /* 內容超出時隱藏 */
-                }
-                
-                .footer {
-                    position: absolute;
-                    bottom: 5mm;
-                    left: 5mm;
-                    right: 5mm;
-                    height: 15mm; /* 給定一個固定高度 */
-                    border-top: 1px solid #000;
-                    text-align: center;
-                }
-                /* --- 定位結束 --- */
-
-                .content table { width: 100%; border-collapse: collapse; }
-                .content th, .content td {
-                    border: 1px solid #999;
-                    padding: 1px 3px;
-                    text-align: left;
-                    font-size: 9pt;
-                    line-height: 1.2;
-                    vertical-align: top;
-                    word-break: break-all;
-                }
-                .content th { background-color: #f2f2f2; font-weight: bold; }
-                .footer p {
-                    font-size: 11pt;
-                    margin: 2px 0;
-                    padding-top: 1mm;
-                    font-weight: bold;
-                }
-            </style>`;
-            
-            let finalHTML = '';
-            const binsArray = Array.from(AppState.bins.values());
-            const totalBins = binsArray.length;
-
-            binsArray.forEach((binData, binIndex) => {
-                const itemsArray = Array.from(binData.items.values());
-                const binTotal = itemsArray.reduce((s, i) => s + i.quantity, 0);
-                const totalPagesForBin = Math.max(1, Math.ceil(itemsArray.length / chunkSize));
-                
-                for (let i = 0; i < totalPagesForBin; i++) {
-                    const itemChunk = itemsArray.slice(i * chunkSize, (i + 1) * chunkSize);
-                    const newTitle = `共 ${totalBins} 箱-第 ${binIndex + 1} 箱`;
-                    const pageInfo = `(${i + 1}/${totalPagesForBin})`;
-
-                    let tableRows = '';
-                    if (itemChunk.length > 0) {
-                        itemChunk.forEach(item => {
-                            tableRows += `<tr>
-                                <td>${item.code}</td>
-                                <td>${item.name}</td>
-                                <td style="text-align: center;">${item.quantity}</td>
-                            </tr>`;
-                        });
-                    } else {
-                        tableRows = `<tr><td colspan="3" style="text-align:center;height:100mm;">此箱無商品</td></tr>`;
-                    }
-
-                    const tableHTML = `<table>
-                        <thead><tr>
-                            <th style="width: 30%;">商品編號</th>
-                            <th style="width: 55%;">品項名稱</th>
-                            <th style="text-align: center;">數量</th>
-                        </tr></thead>
-                        <tbody>${tableRows}</tbody>
-                    </table>`;
-                    
-                    const footerHTML = `<div class="footer">
-                        <p>本箱總計: ${binTotal} 件</p>
-                        <p>運單號: ${binData.tracking || '______________________'}</p>
-                    </div>`;
-
-                    finalHTML += `<div class="thermal-label">
-                        <div class="header"><h1>${newTitle} <span style="font-size: 60%;">${pageInfo}</span></h1><p><strong>訂單號碼:</strong> ${orderNumber}</p></div>
-                        <div class="content">${tableHTML}</div>
-                        ${footerHTML}
-                    </div>`;
-                }
-            });
-
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                showToast("無法打開預覽視窗，請檢查彈出視窗是否被封鎖。", "error");
-                btn.disabled = false; btn.textContent = '匯出 熱感紙 (10x15)';
-                return;
-            }
-            printWindow.document.write(`<!DOCTYPE html><html lang="zh-Hant"><head><title>列印熱感應標籤 - ${orderNumber}</title>${printStyles}</head><body>${finalHTML}</body></html>`);
-            printWindow.document.close();
-            setTimeout(() => {
-                printWindow.focus(); 
-                printWindow.print();
-                btn.disabled = false;
-                btn.textContent = '匯出 熱感紙 (10x15)';
-            }, 500);
+                     contentHTML += `<div style="page-break-after:always;width:100mm;height:150mm;padding:5mm;box-sizing:border-box;"><h3>${newTitle}</h3><p>訂單: ${orderNumber}</p><table>`;
+                     chunk.forEach(it => { contentHTML += `<tr><td>${it.code}</td><td>${it.quantity}</td></tr>`; });
+                     contentHTML += `</table><div style="border-top:1px solid #000;margin-top:5px;padding-top:5px;text-align:center;"><p>運單號: ${binData.tracking || '無'}</p>${noteHtml}</div></div>`;
+                 }
+             });
+            const w = window.open('','_blank'); 
+            if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)'; return;}
+            w.document.write(`<html><head><style>@page{size:100mm 150mm;margin:0}body{margin:0}table{width:100%}td{border:1px solid #ccc}</style></head><body>${contentHTML}</body></html>`); w.document.close(); setTimeout(() => { w.print(); }, 500); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)';
         }
 
         exportBtn.addEventListener('click', exportCSV);
@@ -1060,177 +926,104 @@
     }
     setupExports();
     
-    function parseCsvRow(row) {
-        const columns = [];
-        let currentField = '';
-        let inQuotes = false;
-        for (let i = 0; i < row.length; i++) {
-            const char = row[i];
-            if (char === '"') {
-                if (inQuotes && row[i+1] === '"') { 
-                    currentField += '"';
-                    i++; 
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (char === ',' && !inQuotes) {
-                columns.push(currentField.trim());
-                currentField = '';
-            } else {
-                currentField += char;
-            }
-        }
-        columns.push(currentField.trim());
-        return columns;
-    }
-
+    function parseCsvRow(row) { return row.split(',').map(c => c.replace(/^"|"$/g, '')); } 
+    
+    // --- CSV 匯入邏輯 (支援多種格式) ---
     function handleCsvImport(event) {
         const file = event.target.files[0];
-        if (!file) { return; }
-
-        if (!confirm("這將會清除目前的畫面並用CSV檔案的內容取代，您確定要繼續嗎？")) {
-            event.target.value = ''; 
-            return;
-        }
-
+        if (!file) return;
+        if (!confirm("確定還原？目前的資料將被清除。")) { event.target.value = ''; return; }
         const reader = new FileReader();
         reader.onload = function(e) {
-            const text = e.target.result;
-            const rows = text.split('\n').filter(row => row.trim() !== '');
+            const rows = e.target.result.split('\n').filter(r => r.trim() !== '');
+            if(rows.length <= 1) return;
+            AppState.pool.clear(); AppState.bins.clear(); binCounter=0; AppState.lockedBinId=null;
+            let maxBin=0;
 
-            if (rows.length <= 1) {
-                showToast("CSV檔案是空的或格式不正確。", "error");
-                return;
-            }
+            const header = parseCsvRow(rows[0]);
+            const isNewFormat = header.includes('備註');
+            
+            for(let i=1; i<rows.length; i++){
+                const cols = parseCsvRow(rows[i]); 
+                const binName = cols[1];
+                if(!binName) continue;
+                
+                // 修改：解析新版箱號格式 "共X箱-第Y箱" -> 取 Y
+                // 使用正則匹配 "第 Y 箱" (容錯空格)
+                const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
+                // 如果匹配不到 (舊格式)，則退回尋找任何數字
+                const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
+                
+                maxBin = Math.max(maxBin, bNum);
+                const bId = `bin-${bNum}`;
 
-            AppState.pool.clear();
-            AppState.bins.clear();
-            AppState.lockedBinId = null;
-            binCounter = 0;
+                let note = '';
+                let itemCode = '';
+                let itemBarcode = '';
+                let itemName = '';
+                let itemQty = 0;
 
-            const restoredBins = new Map();
-            let maxBinNum = 0;
+                if (isNewFormat) {
+                    note = cols[3];
+                    itemCode = cols[4];
+                    itemBarcode = cols[5];
+                    itemName = cols[6];
+                    itemQty = parseInt(cols[7]);
+                } else {
+                    itemCode = cols[3];
+                    itemBarcode = cols[4];
+                    itemName = cols[5];
+                    itemQty = parseInt(cols[6]);
+                }
 
-            for (let i = 1; i < rows.length; i++) {
-                try {
-                    const columns = parseCsvRow(rows[i]);
-                    const orderNum = columns[0];
-                    const binName = columns[1];
-                    const tracking = columns[2];
-                    const itemCode = columns[3];
-                    const itemBarcode = columns[4];
-                    const itemName = columns[5];
-                    const itemQty = parseInt(columns[6]);
-                    
-                    if (i === 1) {
-                        orderNumberInput.value = orderNum;
-                    }
+                if(!AppState.bins.has(bId)) {
+                    // 如果還原的是舊格式，name 可能會是 "第 X 箱"，這裡保留原始 CSV 的 name
+                    // 但因為 export 時會重新計算 "共 X 箱"，所以這裡存什麼 name 不太影響顯示
+                    AppState.bins.set(bId, { 
+                        name: `第 ${bNum} 箱`, // 標準化內部名稱
+                        tracking: cols[2], 
+                        note: note, 
+                        items: new Map(), 
+                        completed: false 
+                    });
+                } else {
+                    if(note) AppState.bins.get(bId).note = note;
+                }
 
-                    if (!binName || !itemCode || !itemName || isNaN(itemQty)) continue;
-
-                    const binNumMatch = binName.match(/\d+/);
-                    if (!binNumMatch) continue;
-                    const binNum = parseInt(binNumMatch[0]);
-                    maxBinNum = Math.max(maxBinNum, binNum);
-
-                    const binId = `bin-${binNum}`;
-
-                    if (!restoredBins.has(binId)) {
-                        restoredBins.set(binId, {
-                            name: binName,
-                            tracking: tracking,
-                            items: new Map(),
-                            completed: false // Default completed state on import
-                        });
-                    }
-
-                    const bin = restoredBins.get(binId);
-                    bin.tracking = tracking; 
-                    
-                    if(itemName !== '此箱無商品') {
-                        bin.items.set(itemCode, {
-                            code: itemCode,
-                            barcode: itemBarcode,
-                            name: itemName,
-                            quantity: itemQty
-                        });
-                    }
-                } catch (parseError) {
-                    console.error(`解析CSV第 ${i+1} 行時出錯:`, parseError);
-                    showToast(`處理CSV第 ${i+1} 行時發生錯誤，已跳過。`, 'error');
+                if(itemName !== '此箱無商品' && itemCode) {
+                    AppState.bins.get(bId).items.set(itemCode, { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty });
                 }
             }
-
-            AppState.bins = restoredBins;
-            binCounter = maxBinNum;
-
-            render();
-            saveStateToLocalStorage();
-            showToast("已成功從CSV備份還原！", "success");
+            binCounter=maxBin;
+            render(); saveStateToLocalStorage(); showToast("還原成功", "success");
         };
-        
-        reader.onerror = function() {
-            showToast("讀取檔案時發生錯誤！", "error");
-        };
-
-        reader.readAsText(new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), file]), "UTF-8");
+        reader.readAsText(file);
         event.target.value = '';
     }
-
     importCsvInput.addEventListener('change', handleCsvImport);
 
     function showToast(message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `toast-notification ${type}`;
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => { toast.classList.add('show'); }, 10);
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, 3000);
+        const toast = document.createElement('div'); toast.className = `toast-notification ${type}`; toast.textContent = message;
+        document.body.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
-    
     function saveStateToLocalStorage() {
-        try {
-            const stateToSave = {
-                pool: Array.from(AppState.pool.entries()),
-                bins: Array.from(AppState.bins.entries()).map(([binId, binData]) => {
-                    return [binId, { ...binData, items: Array.from(binData.items.entries()) }];
-                }),
-                binCounter: binCounter,
-                orderNumber: orderNumberInput.value,
-                lockedBinId: AppState.lockedBinId
-            };
-            localStorage.setItem('binningToolState_v72', JSON.stringify(stateToSave));
-        } catch (e) { console.error("無法儲存狀態:", e); }
+        localStorage.setItem('binningToolState_v72', JSON.stringify({
+            pool: Array.from(AppState.pool.entries()),
+            bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
+            binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
+        }));
     }
     function loadStateFromLocalStorage() {
-        const savedStateJSON = localStorage.getItem('binningToolState_v72');
-        if (!savedStateJSON) return;
-        try {
-            const savedState = JSON.parse(savedStateJSON);
-            AppState.pool = new Map(savedState.pool);
-            AppState.bins = new Map(savedState.bins.map(([binId, binData]) => {
-                // Ensure 'completed' property exists for older saved states
-                const itemsMap = new Map(binData.items);
-                return [binId, { ...binData, items: itemsMap, completed: binData.completed || false }];
-            }));
-            binCounter = savedState.binCounter || 0;
-            orderNumberInput.value = savedState.orderNumber || '';
-            AppState.lockedBinId = savedState.lockedBinId || null;
-            render();
-            showToast("已成功載入上次的進度。", 'success');
-        } catch(e) {
-            console.error("載入狀態失敗:", e);
-            localStorage.removeItem('binningToolState_v72');
-        }
+        const s = localStorage.getItem('binningToolState_v72');
+        if(!s) return;
+        const d = JSON.parse(s);
+        AppState.pool = new Map(d.pool);
+        AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}])); 
+        binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
+        render();
     }
-    
-    // --- 初始呼叫 ---
     orderNumberInput.addEventListener('input', saveStateToLocalStorage);
     document.addEventListener('DOMContentLoaded', loadStateFromLocalStorage);
-
 </script>
 </body>
 </html>
