@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧拖拽分箱工具 (V94 - 列表捲動優化版)</title>
+    <title>智慧拖拽分箱工具 (V95 - 檢查模式增強版)</title>
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
@@ -27,8 +27,14 @@
         /* 模式切換按鈕樣式 */
         #mode-switch-btn { background-color: #6610f2; }
         #mode-switch-btn:hover { background-color: #520dc2; }
+        
+        /* 入倉模式 (粉色) */
         #mode-switch-btn.inbound-mode { background-color: #d63384; }
         #mode-switch-btn.inbound-mode:hover { background-color: #b02a6b; }
+
+        /* 檢查模式 (橘色) */
+        #mode-switch-btn.check-mode { background-color: #fd7e14; }
+        #mode-switch-btn.check-mode:hover { background-color: #e36209; }
 
         #export-btn { background-color: #28a745; }
         #export-btn:hover { background-color: #218838; }
@@ -281,7 +287,7 @@
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
-    let currentMode = 'outbound'; // 'outbound' (出貨) or 'inbound' (入倉)
+    let currentMode = 'outbound'; // 'outbound' (出貨), 'inbound' (入倉), 'check' (檢查)
 
     // --- 核心渲染函式 ---
     function render() {
@@ -528,6 +534,38 @@
         return poolMap;
     }
 
+    // --- 新增：檢查模式解析邏輯 (格式：編號 數量) ---
+    function parseCheckData(rawLines) {
+        const poolMap = new Map();
+        const dataLines = rawLines.map(line => line.trim()).filter(line => line);
+        
+        for (const line of dataLines) {
+            // 使用正規表達式拆分：抓取最後一個空白(或Tab)之後的數字作為數量，前面的全部作為編號
+            // 這樣即便編號中間有空格 (如 "ITEM A 01") 也能正確解析
+            const match = line.match(/^(.+)[\s\t]+(\d+)$/);
+            
+            if (match) {
+                const code = match[1].trim();
+                const quantity = parseInt(match[2], 10);
+                
+                if (code && !isNaN(quantity)) {
+                    if (poolMap.has(code)) {
+                        poolMap.get(code).quantity += quantity;
+                    } else {
+                        // 因為此模式沒有名稱，暫時用編號代替名稱顯示，條碼設為 NA
+                        poolMap.set(code, { 
+                            code: code, 
+                            barcode: 'NA', 
+                            name: code, 
+                            quantity: quantity 
+                        });
+                    }
+                }
+            }
+        }
+        return poolMap;
+    }
+
     function clearAllData() {
         if (confirm("您確定要清除所有資料嗎？\n這個操作無法復原，將會清空待分箱區、所有箱子和訂單號碼。")) {
             AppState.pool.clear();
@@ -564,17 +602,25 @@
 
     // --- 事件監聽器綁定 ---
     modeSwitchBtn.addEventListener('click', () => {
+        // 模式循環：出貨 (outbound) -> 入倉 (inbound) -> 檢查 (check) -> 出貨...
         if (currentMode === 'outbound') {
             currentMode = 'inbound';
             modeSwitchBtn.textContent = '目前模式：入倉模式';
-            modeSwitchBtn.classList.add('inbound-mode');
+            modeSwitchBtn.className = 'inbound-mode'; // 清除其他 class 只留這個
             dataInput.placeholder = '1. 在此貼上入倉資料 (格式：編號\\n名稱\\n數量\\n數量2)...';
             manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【入倉模式】', 'info');
+        } else if (currentMode === 'inbound') {
+            currentMode = 'check';
+            modeSwitchBtn.textContent = '目前模式：檢查模式';
+            modeSwitchBtn.className = 'check-mode';
+            dataInput.placeholder = '1. 在此貼上簡易資料 (格式：商品編號 數量)...\\n範例：136-G00001-BK-M 2';
+            manualAddBtn.style.display = 'none'; // 檢查模式通常是整批貼上，暫隱藏手動
+            showToast('已切換至【檢查模式】', 'info');
         } else {
             currentMode = 'outbound';
             modeSwitchBtn.textContent = '目前模式：出貨模式';
-            modeSwitchBtn.classList.remove('inbound-mode');
+            modeSwitchBtn.className = ''; // 移除所有特定模式 class 回復預設藍色
             dataInput.placeholder = '1. 在此貼上商品資料...';
             manualAddBtn.style.display = 'none';
             showToast('已切換至【出貨模式】', 'info');
@@ -584,8 +630,17 @@
     parseBtn.addEventListener('click', () => {
         const rawLines = dataInput.value.trim().split('\n');
         if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === '')) { showToast("請先輸入資料！", "error"); return; }
+        
         let parsedMap;
-        if (currentMode === 'inbound') { parsedMap = parseInboundData(rawLines); } else { parsedMap = intelligentParse(rawLines); }
+        // 根據不同模式選擇解析器
+        if (currentMode === 'inbound') { 
+            parsedMap = parseInboundData(rawLines); 
+        } else if (currentMode === 'check') {
+            parsedMap = parseCheckData(rawLines); 
+        } else { 
+            parsedMap = intelligentParse(rawLines); 
+        }
+
         if (parsedMap.size > 0) {
             AppState.pool = parsedMap;
             AppState.bins.clear();
@@ -593,7 +648,13 @@
             binCounter = 0;
             render();
             dataInput.value = '';
-            showToast(`資料解析成功！(模式：${currentMode === 'inbound' ? '入倉' : '出貨'})`, 'success');
+            
+            // 顯示對應模式的成功訊息
+            let modeName = '出貨';
+            if(currentMode === 'inbound') modeName = '入倉';
+            if(currentMode === 'check') modeName = '檢查';
+            
+            showToast(`資料解析成功！(模式：${modeName})`, 'success');
             saveStateToLocalStorage();
         } else {
             showToast("解析失敗！請檢查資料格式是否符合當前模式。", 'error');
