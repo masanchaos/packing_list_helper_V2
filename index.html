@@ -989,20 +989,31 @@
              const totalBins = binsArray.length;
              binsArray.forEach((binData, binIndex) => {
                  const itemsArray = Array.from(binData.items.values());
+                 // 因為加入名稱可能會變長，如果單頁印不下可以把這裡的 12 改小 (例如 10)
                  const totalPages = Math.max(1, Math.ceil(itemsArray.length / 12));
                  const noteHtml = binData.note ? `<p style="font-size:9pt;margin-top:2px;">備註: ${binData.note}</p>` : '';
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i*12, (i+1)*12);
                      const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
                      const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
-                     contentHTML += `<div style="page-break-after:always;width:100mm;height:150mm;padding:5mm;box-sizing:border-box;"><h3>${newTitle}</h3><p>訂單: ${orderNumber}</p><table>`;
-                     chunk.forEach(it => { contentHTML += `<tr><td>${it.code}</td><td>${it.quantity}</td></tr>`; });
-                     contentHTML += `</table><div style="border-top:1px solid #000;margin-top:5px;padding-top:5px;text-align:center;"><p>運單號: ${binData.tracking || '無'}</p>${noteHtml}</div></div>`;
+                     
+                     // 加上了簡單的表頭 (<thead>) 讓版面更好看
+                     contentHTML += `<div style="page-break-after:always;width:100mm;height:150mm;padding:5mm;box-sizing:border-box;"><h3>${newTitle}</h3><p>訂單: ${orderNumber}</p><table><thead><tr><th style="text-align:left;">商品名稱</th><th style="text-align:center; width:40px;">數量</th></tr></thead><tbody>`;
+                     
+                     // 將原本的 it.code 改為 it.name (若想同時保留編號可用：${it.name}<br><span style="font-size:10px">${it.code}</span>)
+                     chunk.forEach(it => { contentHTML += `<tr><td>${it.name}</td><td style="text-align:center;">${it.quantity}</td></tr>`; });
+                     
+                     contentHTML += `</tbody></table><div style="border-top:1px solid #000;margin-top:5px;padding-top:5px;text-align:center;"><p>運單號: ${binData.tracking || '無'}</p>${noteHtml}</div></div>`;
                  }
              });
             const w = window.open('','_blank'); 
             if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)'; return;}
-            w.document.write(`<html><head><style>@page{size:100mm 150mm;margin:0}body{margin:0}table{width:100%}td{border:1px solid #ccc}</style></head><body>${contentHTML}</body></html>`); w.document.close(); setTimeout(() => { w.print(); }, 500); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)';
+            // 加入 th 的樣式
+            w.document.write(`<html><head><style>@page{size:100mm 150mm;margin:0}body{margin:0;font-family:sans-serif;}table{width:100%;border-collapse:collapse;margin-bottom:10px;}th{border-bottom:1px solid #000;padding-bottom:5px;}td{border-bottom:1px dashed #ccc;padding:5px 0;font-size:14px;}</style></head><body>${contentHTML}</body></html>`); 
+            w.document.close(); 
+            setTimeout(() => { w.print(); }, 500); 
+            btn.disabled=false; 
+            btn.textContent='匯出 熱感紙 (10x15)';
         }
 
         exportBtn.addEventListener('click', exportCSV);
