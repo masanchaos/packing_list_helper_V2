@@ -988,27 +988,30 @@
              const binsArray = Array.from(AppState.bins.values());
              const totalBins = binsArray.length;
              
-             // 因為字體縮小了，我們可以稍微調升一點每頁的安全上限到 8 或 9 
-             // 這裡先設為 8 個，確保排版最舒適
+             // 每頁的安全上限維持在 8 個
              const itemsPerPage = 8;
 
              binsArray.forEach((binData, binIndex) => {
                  const itemsArray = Array.from(binData.items.values());
                  const totalPages = Math.max(1, Math.ceil(itemsArray.length / itemsPerPage));
                  
-                 // 將運單號與備註準備好，移到上方
+                 // 將運單號與備註準備好
                  const trackingHtml = `<p>運單號: ${binData.tracking || '無'}</p>`;
                  const noteHtml = binData.note ? `<p style="color:#555;">備註: ${binData.note}</p>` : '';
                  
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i * itemsPerPage, (i + 1) * itemsPerPage);
-                     const pageSuffix = totalPages > 1 ? `-第${i+1}頁` : '';
-                     const newTitle = `共${totalBins}箱-第${binIndex + 1}箱${pageSuffix}`;
                      
-                     // 組合 HTML，將所有資訊集中在 header
+                     // 判斷是否需要顯示分頁
+                     const pageHtml = totalPages > 1 ? `<div class="page-num">第 ${i+1} 頁</div>` : '';
+                     
+                     // 組合 HTML，將標題區塊獨立出來並置中排版
                      contentHTML += `<div class="page-container">
                         <div class="header">
-                            <h3>${newTitle}</h3>
+                            <div class="header-title">
+                                <div class="box-num">共 ${totalBins} 箱 - 第 ${binIndex + 1} 箱</div>
+                                ${pageHtml}
+                            </div>
                             <p>訂單號: ${orderNumber}</p>
                             ${trackingHtml}
                             ${noteHtml}
@@ -1041,34 +1044,39 @@
             const w = window.open('','_blank'); 
             if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)'; return;}
             
-            // 全新的 CSS 設計，集中頭部資訊，縮小整體字體，並強制隱藏溢出
+            // 全新的 CSS 設計，大幅放大 .box-num 與 .page-num
             w.document.write(`<html><head><style>
                 @page { size: 100mm 150mm; margin: 0; }
                 body { margin: 0; font-family: sans-serif; background: #fff; }
                 .page-container { 
                     page-break-after: always; 
                     width: 100mm; 
-                    height: 148mm; /* 稍微小於 150mm 留一點緩衝 */
-                    padding: 4mm; /* 縮小邊距榨出更多空間 */
+                    height: 148mm; 
+                    padding: 4mm; 
                     box-sizing: border-box; 
                     display: flex; 
                     flex-direction: column; 
-                    overflow: hidden; /* 【關鍵】就算內容太多，也會直接被切掉，絕對不會疊到下一張紙 */
+                    overflow: hidden; 
                 }
                 .header { 
                     margin-bottom: 5px; 
                     border-bottom: 2px solid #000; 
-                    padding-bottom: 5px; 
-                    flex-shrink: 0; /* 確保頭部區域不會被壓縮 */
+                    padding-bottom: 6px; 
+                    flex-shrink: 0; 
                 }
-                .header h3 { margin: 0 0 4px 0; font-size: 15px; } /* 標題稍微縮小 */
-                .header p { margin: 0 0 2px 0; font-size: 11px; font-weight: bold; } /* 訂單、運單、備註字體縮小 */
+                .header-title { text-align: center; margin-bottom: 8px; } /* 置中標題區塊 */
+                /* ★★★ 重大修改：大幅放大箱號並加重特粗體 ★★★ */
+                .box-num { font-size: 24px; font-weight: 900; letter-spacing: 1px; } 
+                /* ★★★ 重大修改：放大分頁字體 ★★★ */
+                .page-num { font-size: 16px; font-weight: bold; margin-top: 4px; } 
+                
+                .header p { margin: 0 0 3px 0; font-size: 12px; font-weight: bold; } /* 稍微將訂單/運單字體調到12px求平衡 */
                 table { width: 100%; border-collapse: collapse; }
                 th { border-bottom: 1px solid #000; padding-bottom: 3px; font-size: 12px; text-align: left; }
                 th.qty-col { text-align: center; width: 35px; }
                 td { border-bottom: 1px dashed #ccc; padding: 6px 0; vertical-align: middle; }
-                .item-name { font-size: 13px; font-weight: bold; line-height: 1.2; } /* 品名字體縮小 */
-                .item-code { font-size: 9px; color: #555; margin-top: 2px; } /* 編號字體再縮小 */
+                .item-name { font-size: 13px; font-weight: bold; line-height: 1.2; } 
+                .item-code { font-size: 9px; color: #555; margin-top: 2px; } 
                 .item-qty { text-align: center; font-size: 15px; font-weight: bold; }
             </style></head><body>${contentHTML}</body></html>`); 
             
