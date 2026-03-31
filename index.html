@@ -1077,34 +1077,6 @@
             btn.disabled=false; 
             btn.textContent='匯出 熱感紙 (10x15)';
         }
-            
-            // ★ 關鍵修改 3：重新撰寫 CSS 樣式，使用 Flexbox 讓表尾 (footer) 自動置底，且避免超出範圍重疊
-            w.document.write(`<html><head><style>
-                @page { size: 100mm 150mm; margin: 0; }
-                body { margin: 0; font-family: sans-serif; background: #fff; }
-                .page-container { 
-                    page-break-after: always; 
-                    width: 100mm; 
-                    min-height: 145mm; /* 使用 min-height 確保高度，但保留彈性 */
-                    padding: 5mm; 
-                    box-sizing: border-box; 
-                    display: flex; 
-                    flex-direction: column; 
-                }
-                .header h3 { margin: 0 0 5px 0; font-size: 18px; }
-                .header p { margin: 0; }
-                table { width: 100%; border-collapse: collapse; flex-grow: 1; }
-                th { border-bottom: 2px solid #000; padding-bottom: 5px; font-size: 14px; }
-                td { border-bottom: 1px dashed #ccc; padding: 6px 0; vertical-align: middle; }
-                .footer { border-top: 1px solid #000; margin-top: auto; padding-top: 5px; text-align: center; }
-            </style></head><body>${contentHTML}</body></html>`); 
-            
-            w.document.close(); 
-            // 稍微拉長一點點等待時間，確保複雜一點的 CSS 能完全渲染再彈出列印視窗
-            setTimeout(() => { w.print(); }, 800); 
-            btn.disabled=false; 
-            btn.textContent='匯出 熱感紙 (10x15)';
-        }
 
         exportBtn.addEventListener('click', exportCSV);
         exportA4PdfBtn.addEventListener('click', exportA4PDF);
