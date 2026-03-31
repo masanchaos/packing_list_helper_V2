@@ -1025,15 +1025,6 @@
             btn.disabled=false; 
             btn.textContent='匯出 熱感紙 (10x15)';
         }
-            const w = window.open('','_blank'); 
-            if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 熱感紙 (10x15)'; return;}
-            // 加入 th 的樣式
-            w.document.write(`<html><head><style>@page{size:100mm 150mm;margin:0}body{margin:0;font-family:sans-serif;}table{width:100%;border-collapse:collapse;margin-bottom:10px;}th{border-bottom:1px solid #000;padding-bottom:5px;}td{border-bottom:1px dashed #ccc;padding:5px 0;font-size:14px;}</style></head><body>${contentHTML}</body></html>`); 
-            w.document.close(); 
-            setTimeout(() => { w.print(); }, 500); 
-            btn.disabled=false; 
-            btn.textContent='匯出 熱感紙 (10x15)';
-        }
 
         exportBtn.addEventListener('click', exportCSV);
         exportA4PdfBtn.addEventListener('click', exportA4PDF);
