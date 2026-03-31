@@ -74,7 +74,6 @@
             padding: 20px; 
             border: 2px dashed transparent; 
             transition: border-color 0.2s, background-color 0.2s;
-            /* 確保高度計算正確 */
             min-height: 0; 
         }
         #bin-area { 
@@ -256,7 +255,7 @@
     const itemListContent = document.getElementById('item-list-content');
     const binArea = document.getElementById('bin-area');
     const searchBox = document.getElementById('search-box');
-    const scanInput = document.getElementById('scan-input'); // 掃描輸入框
+    const scanInput = document.getElementById('scan-input'); 
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -287,7 +286,7 @@
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
-    let currentMode = 'outbound'; // 'outbound' (出貨), 'inbound' (入倉), 'check' (檢查)
+    let currentMode = 'outbound'; 
 
     // --- 核心渲染函式 ---
     function render() {
@@ -349,12 +348,11 @@
                 saveStateToLocalStorage();
             });
 
-            // --- 新增：備註欄位 ---
             const noteInput = document.createElement('input');
             noteInput.type = 'text';
             noteInput.className = 'note-input';
             noteInput.placeholder = '備註 (選填)...';
-            noteInput.value = binData.note || ''; // 如果沒有備註則為空
+            noteInput.value = binData.note || ''; 
             noteInput.addEventListener('input', (e) => {
                 AppState.bins.get(binId).note = e.target.value;
                 saveStateToLocalStorage();
@@ -362,7 +360,7 @@
 
             binEl.appendChild(title);
             binEl.appendChild(trackingInput);
-            binEl.appendChild(noteInput); // 將備註欄位加入 DOM
+            binEl.appendChild(noteInput); 
             
             binData.items.forEach(item => {
                 binEl.appendChild(createItemElement(item, binId));
@@ -534,31 +532,20 @@
         return poolMap;
     }
 
-    // --- 新增：檢查模式解析邏輯 (格式：編號 數量) ---
+    // --- 新增：檢查模式解析邏輯 ---
     function parseCheckData(rawLines) {
         const poolMap = new Map();
         const dataLines = rawLines.map(line => line.trim()).filter(line => line);
-        
         for (const line of dataLines) {
-            // 使用正規表達式拆分：抓取最後一個空白(或Tab)之後的數字作為數量，前面的全部作為編號
-            // 這樣即便編號中間有空格 (如 "ITEM A 01") 也能正確解析
             const match = line.match(/^(.+)[\s\t]+(\d+)$/);
-            
             if (match) {
                 const code = match[1].trim();
                 const quantity = parseInt(match[2], 10);
-                
                 if (code && !isNaN(quantity)) {
                     if (poolMap.has(code)) {
                         poolMap.get(code).quantity += quantity;
                     } else {
-                        // 因為此模式沒有名稱，暫時用編號代替名稱顯示，條碼設為 NA
-                        poolMap.set(code, { 
-                            code: code, 
-                            barcode: 'NA', 
-                            name: code, 
-                            quantity: quantity 
-                        });
+                        poolMap.set(code, { code: code, barcode: 'NA', name: code, quantity: quantity });
                     }
                 }
             }
@@ -602,11 +589,10 @@
 
     // --- 事件監聽器綁定 ---
     modeSwitchBtn.addEventListener('click', () => {
-        // 模式循環：出貨 (outbound) -> 入倉 (inbound) -> 檢查 (check) -> 出貨...
         if (currentMode === 'outbound') {
             currentMode = 'inbound';
             modeSwitchBtn.textContent = '目前模式：入倉模式';
-            modeSwitchBtn.className = 'inbound-mode'; // 清除其他 class 只留這個
+            modeSwitchBtn.className = 'inbound-mode'; 
             dataInput.placeholder = '1. 在此貼上入倉資料 (格式：編號\\n名稱\\n數量\\n數量2)...';
             manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【入倉模式】', 'info');
@@ -615,12 +601,12 @@
             modeSwitchBtn.textContent = '目前模式：檢查模式';
             modeSwitchBtn.className = 'check-mode';
             dataInput.placeholder = '1. 在此貼上簡易資料 (格式：商品編號 數量)...\\n範例：136-G00001-BK-M 2';
-            manualAddBtn.style.display = 'none'; // 檢查模式通常是整批貼上，暫隱藏手動
+            manualAddBtn.style.display = 'none'; 
             showToast('已切換至【檢查模式】', 'info');
         } else {
             currentMode = 'outbound';
             modeSwitchBtn.textContent = '目前模式：出貨模式';
-            modeSwitchBtn.className = ''; // 移除所有特定模式 class 回復預設藍色
+            modeSwitchBtn.className = ''; 
             dataInput.placeholder = '1. 在此貼上商品資料...';
             manualAddBtn.style.display = 'none';
             showToast('已切換至【出貨模式】', 'info');
@@ -632,14 +618,9 @@
         if (rawLines.length === 0 || (rawLines.length === 1 && rawLines[0] === '')) { showToast("請先輸入資料！", "error"); return; }
         
         let parsedMap;
-        // 根據不同模式選擇解析器
-        if (currentMode === 'inbound') { 
-            parsedMap = parseInboundData(rawLines); 
-        } else if (currentMode === 'check') {
-            parsedMap = parseCheckData(rawLines); 
-        } else { 
-            parsedMap = intelligentParse(rawLines); 
-        }
+        if (currentMode === 'inbound') { parsedMap = parseInboundData(rawLines); } 
+        else if (currentMode === 'check') { parsedMap = parseCheckData(rawLines); } 
+        else { parsedMap = intelligentParse(rawLines); }
 
         if (parsedMap.size > 0) {
             AppState.pool = parsedMap;
@@ -648,12 +629,9 @@
             binCounter = 0;
             render();
             dataInput.value = '';
-            
-            // 顯示對應模式的成功訊息
             let modeName = '出貨';
             if(currentMode === 'inbound') modeName = '入倉';
             if(currentMode === 'check') modeName = '檢查';
-            
             showToast(`資料解析成功！(模式：${modeName})`, 'success');
             saveStateToLocalStorage();
         } else {
@@ -671,14 +649,14 @@
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
     
-    // --- 搜尋框邏輯 (僅篩選) ---
+    // --- 搜尋框邏輯 ---
     searchBox.addEventListener('input', () => {
         const searchTerm = searchBox.value.trim();
         currentSearchTerm = searchTerm.toLowerCase();
         render();
     });
 
-    // --- 掃描框邏輯 (入箱或新增) ---
+    // --- 掃描框邏輯 ---
     scanInput.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault(); 
@@ -703,17 +681,11 @@
             if (!existingItem) {
                 existingItem = Array.from(AppState.pool.values()).find(item => item.barcode === codeToScan);
             }
-
             if (existingItem) {
                 existingItem.quantity += 1;
                 showToast(`商品 "${existingItem.name}" 數量 +1 (目前: ${existingItem.quantity})`, 'success');
             } else {
-                const newItem = {
-                    code: codeToScan,
-                    barcode: 'NA',
-                    name: `掃描新增商品 (${codeToScan})`,
-                    quantity: 1
-                };
+                const newItem = { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 };
                 AppState.pool.set(codeToScan, newItem);
                 showToast(`已新增商品：${newItem.name}`, 'success');
             }
@@ -936,33 +908,34 @@
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
         
-        // ★★★ 全面同步改版的 A4 總表匯出 ★★★
+        // ★★★ 全面美化與升級的 A4 總表匯出 ★★★
         function exportA4PDF() { 
             if (AppState.bins.size === 0 && AppState.pool.size === 0) { showToast("沒有任何資料可以匯出！", "error"); return; }
             const btn = document.getElementById('export-a4-pdf-btn'); btn.disabled = true; btn.textContent = '準備預覽...';
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
-            const exportDate = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            const exportDate = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
             
-            // A4 置中大標題區塊
+            const totalBins = AppState.bins.size;
+            
+            // A4 專業表頭
             let contentHTML = `<div class="page-container">
-                <div class="header">
-                    <div class="header-title">
-                        <div class="box-num">分箱明細總表</div>
-                        <div class="page-num" style="margin-top: 8px;">真站電商倉儲-樹林倉</div>
+                <div class="main-header">
+                    <h1>出貨分箱明細總表</h1>
+                    <div class="warehouse-name">真站電商倉儲-樹林倉</div>
+                    <div class="order-info-bar">
+                        <span><strong>訂單號碼:</strong> ${orderNumber}</span>
+                        <span><strong>總箱數:</strong> ${totalBins} 箱</span>
+                        <span><strong>列印時間:</strong> ${exportDate}</span>
                     </div>
-                    <p style="margin-top: 15px;">訂單號碼: ${orderNumber}</p>
-                    <p>匯出日期: ${exportDate}</p>
                 </div>`;
                 
-            const totalBins = AppState.bins.size;
             Array.from(AppState.bins.values()).forEach((binData, binIndex) => {
-                const noteHtml = binData.note ? `<span style="color:#555; margin-left: 15px;">備註: ${binData.note}</span>` : '';
+                const noteHtml = binData.note ? `<span class="note">備註: ${binData.note}</span>` : '';
                 const newTitle = `共 ${totalBins} 箱 - 第 ${binIndex + 1} 箱`;
                 
                 contentHTML += `<div class="bin-section">
                     <div class="bin-header">
-                        <span style="font-size: 18px;">${newTitle}</span>
-                        <span style="margin-left: 20px; font-weight: normal; font-size: 14px;">運單號: ${binData.tracking || '未填寫'}</span>
+                        <div class="bin-title">${newTitle} <span style="font-size: 14px; font-weight: normal; margin-left: 15px; color: #eee;">運單號: ${binData.tracking || '未填寫'}</span></div>
                         ${noteHtml}
                     </div>
                     <table>
@@ -985,7 +958,7 @@
                         </tr>`; 
                     }); 
                 } else { 
-                    contentHTML += `<tr><td colspan="2" style="text-align:center;">此箱無商品</td></tr>`; 
+                    contentHTML += `<tr><td colspan="2" style="text-align:center; padding: 15px; color: #666;">此箱無商品</td></tr>`; 
                 }
                 contentHTML += `</tbody></table></div>`;
             });
@@ -993,29 +966,39 @@
             
             const printWindow = window.open('', '_blank');
             if(!printWindow){showToast("無法打開預覽，請檢查彈窗封鎖。", "error"); btn.disabled=false; btn.textContent='匯出 PDF (A4總表)'; return;}
-            printWindow.document.write(`<!DOCTYPE html><html><head><title>A4分箱表</title><style>
-                @page { size: A4; margin: 10mm; }
-                body { font-family: sans-serif; margin: 0; padding: 0; background: #fff; }
+            printWindow.document.write(`<!DOCTYPE html><html><head><title>A4分箱總表</title><style>
+                @page { size: A4; margin: 12mm; }
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 0; background: #fff; color: #222; }
                 .page-container { width: 100%; max-width: 190mm; margin: 0 auto; }
-                .header { margin-bottom: 20px; border-bottom: 3px solid #000; padding-bottom: 10px; }
-                .header-title { text-align: center; }
-                .box-num { font-size: 32px; font-weight: 900; letter-spacing: 2px; }
-                .page-num { font-size: 22px; font-weight: bold; }
-                .header p { margin: 0 0 5px 0; font-size: 14px; font-weight: bold; }
-                .bin-section { margin-bottom: 25px; page-break-inside: avoid; }
-                .bin-header { background: #f0f0f0; padding: 10px; border-left: 6px solid #000; margin-bottom: 8px; font-weight: bold; display: flex; align-items: baseline; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-                th { border-bottom: 2px solid #000; padding: 6px; font-size: 14px; text-align: left; }
-                th.qty-col { text-align: center; width: 60px; }
-                td { border-bottom: 1px dashed #ccc; padding: 8px 5px; vertical-align: middle; }
-                .item-name { font-size: 15px; font-weight: bold; line-height: 1.3; }
-                .item-code { font-size: 11px; color: #555; margin-top: 4px; }
-                .item-qty { text-align: center; font-size: 18px; font-weight: bold; }
+                
+                /* 表頭樣式 */
+                .main-header { text-align: center; margin-bottom: 25px; border-bottom: 3px solid #000; padding-bottom: 15px; }
+                h1 { margin: 0 0 5px 0; font-size: 28px; letter-spacing: 2px; }
+                .warehouse-name { font-size: 18px; color: #555; font-weight: bold; margin-bottom: 15px; }
+                .order-info-bar { display: flex; justify-content: space-between; font-size: 15px; background: #f4f4f4; padding: 10px 15px; border-radius: 4px; border: 1px solid #ddd; }
+                
+                /* 每個箱子的區塊 */
+                .bin-section { margin-bottom: 30px; page-break-inside: avoid; }
+                .bin-header { background: #333; color: #fff; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px 4px 0 0; }
+                .bin-title { font-size: 18px; font-weight: bold; }
+                .bin-header .note { font-size: 14px; color: #ffeb3b; }
+                
+                /* 表格樣式 (斑馬紋) */
+                table { width: 100%; border-collapse: collapse; border: 1px solid #ccc; border-top: none; }
+                th { background: #eee; padding: 8px 12px; font-size: 15px; text-align: left; border-bottom: 2px solid #ccc; }
+                th.qty-col { text-align: center; width: 80px; }
+                td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+                tr:nth-child(even) td { background-color: #fafafa; }
+                
+                /* 商品資訊排版 */
+                .item-name { font-size: 15px; font-weight: bold; line-height: 1.4; color: #111; }
+                .item-code { font-size: 12px; color: #666; margin-top: 4px; }
+                .item-qty { text-align: center; font-size: 20px; font-weight: bold; color: #000; }
             </style></head><body>${contentHTML}</body></html>`);
             printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); }, 800); btn.disabled=false; btn.textContent='匯出 PDF (A4總表)';
         }
 
-        // ★★★ 全面同步改版的 A5 箱貼匯出 ★★★
+        // ★★★ 全面美化與升級的 A5 箱貼匯出 ★★★
         function exportA5BoxLabelsPDF() {
              if (AppState.bins.size === 0) { showToast("無資料！", "error"); return; }
              const btn = document.getElementById('export-a5-pdf-btn'); btn.disabled=true; btn.textContent='準備預覽...';
@@ -1024,15 +1007,15 @@
              const binsArray = Array.from(AppState.bins.values());
              const totalBins = binsArray.length;
              
-             // A5 比較大，每頁可以輕鬆塞 15 個商品
-             const itemsPerPage = 15;
+             // A5 空間充足，設定為 20 筆商品最為舒適
+             const itemsPerPage = 20;
 
              binsArray.forEach((binData, binIndex) => {
                  const itemsArray = Array.from(binData.items.values());
                  const totalPages = Math.max(1, Math.ceil(itemsArray.length / itemsPerPage));
                  
-                 const trackingHtml = `<p>運單號: ${binData.tracking || '無'}</p>`;
-                 const noteHtml = binData.note ? `<p style="color:#555;">備註: ${binData.note}</p>` : '';
+                 const trackingText = binData.tracking || '無';
+                 const noteHtml = binData.note ? `<div class="info-text" style="color:#555; margin-top:3px;">備註: ${binData.note}</div>` : '';
                  
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i * itemsPerPage, (i + 1) * itemsPerPage);
@@ -1040,13 +1023,15 @@
                      
                      contentHTML += `<div class="page-container">
                         <div class="header">
-                            <div class="header-title">
-                                <div class="box-num">共 ${totalBins} 箱 - 第 ${binIndex + 1} 箱</div>
+                            <div class="header-left">
+                                <div class="info-text">訂單: ${orderNumber}</div>
+                                <div class="info-text">運單: ${trackingText}</div>
+                                ${noteHtml}
+                            </div>
+                            <div class="header-right">
+                                <div class="box-num">共 ${totalBins} 箱<br>第 ${binIndex + 1} 箱</div>
                                 ${pageHtml}
                             </div>
-                            <p>訂單號: ${orderNumber}</p>
-                            ${trackingHtml}
-                            ${noteHtml}
                         </div>
                         <table>
                             <thead>
@@ -1076,33 +1061,44 @@
              const w = window.open('','_blank'); 
              if(!w){showToast("無法打開預覽", "error"); btn.disabled=false; btn.textContent='匯出 PDF (A5箱貼)'; return;}
              
-             // A5 專屬 CSS，整體比例放大
+             // A5 專屬美化 CSS，加入斑馬紋與左右排版表頭
              w.document.write(`<html><head><style>
                 @page { size: 148mm 210mm; margin: 0; }
-                body { margin: 0; font-family: sans-serif; background: #fff; }
+                body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #fff; color: #111; }
                 .page-container { 
                     page-break-after: always; 
                     width: 148mm; 
                     height: 209mm; 
-                    padding: 8mm; 
+                    padding: 8mm 10mm; 
                     box-sizing: border-box; 
                     display: flex; 
                     flex-direction: column; 
                     overflow: hidden; 
                 }
-                .header { margin-bottom: 8px; border-bottom: 3px solid #000; padding-bottom: 8px; flex-shrink: 0; }
-                .header-title { text-align: center; margin-bottom: 15px; }
-                .box-num { font-size: 32px; font-weight: 900; letter-spacing: 2px; }
-                .page-num { font-size: 20px; font-weight: bold; margin-top: 6px; }
-                .header p { margin: 0 0 5px 0; font-size: 16px; font-weight: bold; }
+                
+                /* 表頭左右排版 */
+                .header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #000; padding-bottom: 12px; margin-bottom: 15px; flex-shrink: 0; }
+                .header-left { display: flex; flex-direction: column; justify-content: flex-end; }
+                .header-right { text-align: right; }
+                
+                .info-text { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+                .box-num { font-size: 34px; font-weight: 900; line-height: 1.15; letter-spacing: 1px; }
+                .page-num { font-size: 18px; font-weight: bold; color: #555; margin-top: 8px; }
+                
+                /* 表格樣式 (斑馬紋) */
                 table { width: 100%; border-collapse: collapse; }
-                th { border-bottom: 2px solid #000; padding-bottom: 5px; font-size: 16px; text-align: left; }
-                th.qty-col { text-align: center; width: 50px; }
-                td { border-bottom: 1px dashed #ccc; padding: 10px 0; vertical-align: middle; }
-                .item-name { font-size: 18px; font-weight: bold; line-height: 1.3; }
-                .item-code { font-size: 12px; color: #555; margin-top: 4px; }
+                th { border-bottom: 2px solid #000; padding: 6px 8px 10px 8px; font-size: 16px; text-align: left; }
+                th.qty-col { text-align: center; width: 60px; }
+                td { border-bottom: 1px solid #ddd; padding: 10px 8px; vertical-align: middle; }
+                tr:nth-child(even) td { background-color: #fafafa; }
+                
+                /* 商品資訊排版 */
+                .item-name { font-size: 16px; font-weight: bold; line-height: 1.3; }
+                .item-code { font-size: 12px; color: #666; margin-top: 4px; }
                 .item-qty { text-align: center; font-size: 24px; font-weight: bold; }
-                .footer { margin-top: auto; text-align: center; font-size: 20px; font-weight: 900; border-top: 3px solid #000; padding-top: 8px; }
+                
+                /* 專業頁尾 */
+                .footer { margin-top: auto; text-align: center; font-size: 20px; font-weight: 900; border-top: 3px solid #000; padding-top: 10px; letter-spacing: 2px; }
              </style></head><body>${contentHTML}</body></html>`); 
              w.document.close(); setTimeout(() => { w.print(); }, 800); btn.disabled=false; btn.textContent='匯出 PDF (A5箱貼)';
         }
@@ -1116,24 +1112,19 @@
              const binsArray = Array.from(AppState.bins.values());
              const totalBins = binsArray.length;
              
-             // 每頁的安全上限維持在 8 個
              const itemsPerPage = 8;
 
              binsArray.forEach((binData, binIndex) => {
                  const itemsArray = Array.from(binData.items.values());
                  const totalPages = Math.max(1, Math.ceil(itemsArray.length / itemsPerPage));
                  
-                 // 將運單號與備註準備好
                  const trackingHtml = `<p>運單號: ${binData.tracking || '無'}</p>`;
                  const noteHtml = binData.note ? `<p style="color:#555;">備註: ${binData.note}</p>` : '';
                  
                  for(let i=0; i<totalPages; i++) {
                      const chunk = itemsArray.slice(i * itemsPerPage, (i + 1) * itemsPerPage);
-                     
-                     // 判斷是否需要顯示分頁
                      const pageHtml = totalPages > 1 ? `<div class="page-num">第 ${i+1} 頁</div>` : '';
                      
-                     // 組合 HTML，將標題區塊獨立出來並置中排版
                      contentHTML += `<div class="page-container">
                         <div class="header">
                             <div class="header-title">
@@ -1163,7 +1154,6 @@
                          </tr>`; 
                      });
                      
-                     // ★★★ 新增底部專屬頁尾 ★★★
                      contentHTML += `</tbody>
                         </table>
                         <div class="footer">真站電商倉儲-樹林倉</div>
@@ -1176,36 +1166,31 @@
             
             w.document.write(`<html><head><style>
                 @page { size: 100mm 150mm; margin: 0; }
-                body { margin: 0; font-family: sans-serif; background: #fff; }
+                body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #fff; color: #111; }
                 .page-container { 
                     page-break-after: always; 
                     width: 100mm; 
                     height: 149mm; 
-                    padding: 4mm; 
+                    padding: 4mm 5mm; 
                     box-sizing: border-box; 
                     display: flex; 
                     flex-direction: column; 
                     overflow: hidden; 
                 }
-                .header { 
-                    margin-bottom: 5px; 
-                    border-bottom: 2px solid #000; 
-                    padding-bottom: 6px; 
-                    flex-shrink: 0; 
-                }
+                .header { margin-bottom: 5px; border-bottom: 2px solid #000; padding-bottom: 6px; flex-shrink: 0; }
                 .header-title { text-align: center; margin-bottom: 8px; }
                 .box-num { font-size: 24px; font-weight: 900; letter-spacing: 1px; } 
-                .page-num { font-size: 16px; font-weight: bold; margin-top: 4px; } 
+                .page-num { font-size: 16px; font-weight: bold; margin-top: 4px; color: #333; } 
                 .header p { margin: 0 0 3px 0; font-size: 12px; font-weight: bold; }
                 table { width: 100%; border-collapse: collapse; flex-grow: 1;}
-                th { border-bottom: 1px solid #000; padding-bottom: 3px; font-size: 12px; text-align: left; }
+                th { border-bottom: 1px solid #000; padding-bottom: 4px; font-size: 12px; text-align: left; }
                 th.qty-col { text-align: center; width: 35px; }
                 td { border-bottom: 1px dashed #ccc; padding: 6px 0; vertical-align: middle; }
+                tr:nth-child(even) td { background-color: #fafafa; } /* 斑馬紋 */
                 .item-name { font-size: 13px; font-weight: bold; line-height: 1.2; } 
-                .item-code { font-size: 9px; color: #555; margin-top: 2px; } 
-                .item-qty { text-align: center; font-size: 15px; font-weight: bold; }
-                /* ★★★ 頁尾樣式 ★★★ */
-                .footer { margin-top: auto; text-align: center; font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 4px; }
+                .item-code { font-size: 9px; color: #666; margin-top: 2px; } 
+                .item-qty { text-align: center; font-size: 16px; font-weight: bold; }
+                .footer { margin-top: auto; text-align: center; font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 5px; letter-spacing: 1px; }
             </style></head><body>${contentHTML}</body></html>`); 
             
             w.document.close(); 
@@ -1243,7 +1228,6 @@
                 const binName = cols[1];
                 if(!binName) continue;
                 
-                // 修改：解析新版箱號格式 "共X箱-第Y箱" -> 取 Y
                 const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
                 const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
                 
