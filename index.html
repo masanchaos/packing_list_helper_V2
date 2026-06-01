@@ -518,16 +518,29 @@
     function parseInboundData(rawLines) {
         const poolMap = new Map();
         const dataLines = rawLines.map(line => line.trim()).filter(line => line);
-        if (dataLines.length % 4 !== 0) { showToast("警告：入倉資料行數不是4的倍數，解析可能會不完整！", "error"); }
-        for (let i = 0; i < dataLines.length; i += 4) {
-            if (i + 3 >= dataLines.length) break;
-            const code = dataLines[i];
-            const name = dataLines[i+1];
-            const qtyStr = dataLines[i+2];
-            const quantity = parseInt(qtyStr, 10);
-            if (code && name && !isNaN(quantity)) {
-                if (poolMap.has(code)) { poolMap.get(code).quantity += quantity; } else { poolMap.set(code, { code: code, barcode: 'NA', name: name, quantity: quantity }); }
+        const isQty = (s) => s !== undefined && /^\d+$/.test(s); // 純數字才算「數量」
+
+        let count = 0;
+        // 自動辨識每一筆的起點：編號(非純數字) → 名稱(非純數字) → 數量(純數字)
+        // 之後不論接幾行 (數量2 / - / - ...) 都會被自動略過，直到下一個編號
+        // 因此「4行一組」與「6行一組」可混用、皆可正確解析
+        for (let i = 0; i + 2 < dataLines.length; i++) {
+            const code   = dataLines[i];
+            const name   = dataLines[i + 1];
+            const qtyStr = dataLines[i + 2];
+            if (code && name && !isQty(code) && !isQty(name) && isQty(qtyStr)) {
+                const quantity = parseInt(qtyStr, 10);
+                if (poolMap.has(code)) {
+                    poolMap.get(code).quantity += quantity;
+                } else {
+                    poolMap.set(code, { code: code, barcode: 'NA', name: name, quantity: quantity });
+                }
+                count++;
+                i += 2; // 跳過已使用的「名稱、數量」兩行
             }
+        }
+        if (count === 0) {
+            showToast("警告：找不到符合「編號 / 名稱 / 數量」格式的入倉資料！", "error");
         }
         return poolMap;
     }
@@ -593,7 +606,7 @@
             currentMode = 'inbound';
             modeSwitchBtn.textContent = '目前模式：入倉模式';
             modeSwitchBtn.className = 'inbound-mode'; 
-            dataInput.placeholder = '1. 在此貼上入倉資料 (格式：編號\\n名稱\\n數量\\n數量2)...';
+            dataInput.placeholder = '1. 在此貼上入倉資料 (每筆：編號→名稱→數量，其餘行自動忽略；4行/6行皆可)...';
             manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【入倉模式】', 'info');
         } else if (currentMode === 'inbound') {
