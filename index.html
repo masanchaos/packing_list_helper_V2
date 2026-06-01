@@ -159,6 +159,38 @@
         }
         #choice-list .choice-item:hover { background-color: #f0f8ff; }
         #choice-list .choice-item .details { font-size: 12px; color: #555; margin-top: 4px; }
+
+        /* --- 垃圾桶區 --- */
+        #trash-title { color: #b02a6b; }
+        #trash-title .item-count { background-color: #d63384; }
+        #clear-trash-btn { background-color: #dc3545; padding: 4px 10px; font-size: 13px; }
+        #clear-trash-btn:hover { background-color: #c82333; }
+        #trash-area {
+            flex-shrink: 0;
+            max-height: 160px;
+            overflow-y: auto;
+            margin: 0 20px 15px 20px;
+            padding: 10px;
+            border: 2px dashed #e0a8c4;
+            border-radius: 8px;
+            background-color: #fff5fa;
+            min-height: 60px;
+        }
+        #trash-area:empty::before {
+            content: "把待分箱區多餘的物品拖到這裡（或點物品上的 🗑️）";
+            color: #c98bb0; font-size: 13px; display: block; text-align: center; padding: 18px 5px;
+        }
+        #trash-area .item { background-color: #fde7f1; border-color: #f3c6dd; }
+        #trash-area .item strong { color: #b02a6b; }
+        /* 待分箱區物品上的快速丟棄鈕 */
+        .item { position: relative; }
+        .item[data-source="pool"] { padding-right: 34px; }
+        .trash-item-btn {
+            position: absolute; top: 8px; right: 8px; cursor: pointer;
+            font-size: 15px; line-height: 1; padding: 3px 5px; border-radius: 4px;
+            opacity: 0.65; transition: opacity 0.15s, background-color 0.15s;
+        }
+        .trash-item-btn:hover { opacity: 1; background-color: #f8d7da; }
     </style>
 </head>
 <body>
@@ -191,6 +223,13 @@
                 <input type="text" id="search-box" placeholder="🔍 在此輸入關鍵字「篩選」列表..." style="margin: 0 20px 10px 20px; width: calc(100% - 40px);">
             </div>
             <div id="item-list-content"></div>
+            <div class="list-header" id="trash-list-header">
+                <h2 id="trash-title">
+                    <span>🗑️ 垃圾桶區 <span class="item-count" id="trash-count">0</span></span>
+                    <button id="clear-trash-btn" title="永久清空垃圾桶區">清空垃圾桶</button>
+                </h2>
+            </div>
+            <div id="trash-area"></div>
         </div>
         <div id="bin-area-container" class="panel">
             <div class="controls" id="bin-controls">
@@ -272,7 +311,10 @@
     const choiceList = document.getElementById('choice-list');
     const choiceCancelBtn = document.getElementById('choice-cancel-btn');
     const importCsvInput = document.getElementById('import-csv-input');
-    
+    const trashArea = document.getElementById('trash-area');
+    const trashCount = document.getElementById('trash-count');
+    const clearTrashBtn = document.getElementById('clear-trash-btn');
+
     // --- 手動新增功能 DOM ---
     const manualAddBtn = document.getElementById('manual-add-btn');
     const manualAddModal = document.getElementById('manual-add-modal');
@@ -282,7 +324,7 @@
     const newItemNameInput = document.getElementById('new-item-name');
     const newItemQtyInput = document.getElementById('new-item-qty');
     
-    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null };
+    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map() };
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
@@ -367,6 +409,13 @@
             });
             binArea.appendChild(binEl);
         }
+
+        // 渲染垃圾桶區
+        trashArea.innerHTML = '';
+        Array.from(AppState.trash.values()).forEach(item => {
+            trashArea.appendChild(createItemElement(item, 'trash'));
+        });
+
         updateCounts();
     }
     
@@ -378,6 +427,13 @@
         itemEl.dataset.code = item.code;
         itemEl.dataset.source = source;
         itemEl.innerHTML = `<strong>${item.name}</strong><div class="details">(編號: ${item.code}, 條碼: ${item.barcode}, 數量: ${item.quantity})</div>`;
+        if (source === 'pool') {
+            const tb = document.createElement('span');
+            tb.className = 'trash-item-btn';
+            tb.title = '移到垃圾桶區';
+            tb.textContent = '🗑️';
+            itemEl.appendChild(tb);
+        }
         return itemEl;
     }
 
@@ -397,11 +453,18 @@
             }
         });
         binAreaTitle.innerHTML = `分箱工作區 <span class="item-count">${binsTotal}</span>`;
+        const trashTotal = Array.from(AppState.trash.values()).reduce((sum, item) => sum + (item.quantity || 0), 0);
+        if (trashCount) trashCount.textContent = trashTotal;
     }
 
+    function getItemMap(id) {
+        if (id === 'pool') return AppState.pool;
+        if (id === 'trash') return AppState.trash;
+        return AppState.bins.get(id)?.items;
+    }
     function moveItem(itemCode, sourceId, targetId, quantityToMove) {
-        const sourceMap = (sourceId === 'pool') ? AppState.pool : AppState.bins.get(sourceId)?.items;
-        const targetMap = (targetId === 'pool') ? AppState.pool : AppState.bins.get(targetId)?.items;
+        const sourceMap = getItemMap(sourceId);
+        const targetMap = getItemMap(targetId);
         if (!sourceMap || !targetMap || !sourceMap.has(itemCode)) { return; }
         const itemToMove = sourceMap.get(itemCode);
         const existingTargetItem = targetMap.get(itemCode);
@@ -570,6 +633,7 @@
         if (confirm("您確定要清除所有資料嗎？\n這個操作無法復原，將會清空待分箱區、所有箱子和訂單號碼。")) {
             AppState.pool.clear();
             AppState.bins.clear();
+            AppState.trash.clear();
             AppState.lockedBinId = null;
             binCounter = 0;
             orderNumberInput.value = '';
@@ -661,6 +725,30 @@
     });
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
+
+    // --- 垃圾桶區：一鍵丟棄 / 清空 ---
+    itemListContent.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('trash-item-btn')) return;
+        const itemEl = e.target.closest('.item');
+        if (!itemEl) return;
+        const code = itemEl.dataset.code;
+        const item = AppState.pool.get(code);
+        if (!item) return;
+        const name = item.name;
+        const qty = item.quantity;
+        moveItem(code, 'pool', 'trash', qty);
+        showToast(`已將 ${qty} 個 "${name}" 移到垃圾桶區`, 'info');
+    });
+
+    clearTrashBtn.addEventListener('click', () => {
+        if (AppState.trash.size === 0) { showToast("垃圾桶區是空的。", "info"); return; }
+        if (confirm("確定要清空垃圾桶區嗎？\n此操作無法復原（垃圾桶內的物品將被永久移除，不會回到待分箱區）。")) {
+            AppState.trash.clear();
+            render();
+            saveStateToLocalStorage();
+            showToast("垃圾桶區已清空。", "success");
+        }
+    });
     
     // --- 搜尋框邏輯 ---
     searchBox.addEventListener('input', () => {
@@ -758,16 +846,20 @@
         e.preventDefault();
         const targetBin = e.target.closest('.bin');
         const targetPool = e.target.closest('#item-list-content');
+        const targetTrash = e.target.closest('#trash-area');
         document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         itemListContent.style.borderColor = 'transparent';
         if (targetBin) { targetBin.classList.add('drag-over'); }
         if (targetPool) { itemListContent.style.borderColor = '#007bff'; }
+        if (targetTrash) { targetTrash.classList.add('drag-over'); }
     });
     document.addEventListener('dragleave', e => {
         const targetBin = e.target.closest('.bin');
         const targetPool = e.target.closest('#item-list-content');
+        const targetTrash = e.target.closest('#trash-area');
         if(targetBin) targetBin.classList.remove('drag-over');
         if(targetPool) itemListContent.style.borderColor = 'transparent';
+        if(targetTrash) targetTrash.classList.remove('drag-over');
     });
     document.addEventListener('drop', e => {
         e.preventDefault();
@@ -775,9 +867,11 @@
         itemListContent.style.borderColor = 'transparent';
         const targetBinEl = e.target.closest('.bin');
         const targetPoolEl = e.target.closest('#item-list-content');
+        const targetTrashEl = e.target.closest('#trash-area');
         try {
             const itemInfo = JSON.parse(e.dataTransfer.getData('application/json'));
             if (!itemInfo) return;
+            // 待分箱區 → 箱子
             if (targetBinEl && itemInfo.source === 'pool') {
                 const targetBinId = targetBinEl.dataset.binId;
                 const itemData = AppState.pool.get(itemInfo.code);
@@ -787,8 +881,25 @@
                 } else {
                     moveItem(itemInfo.code, itemInfo.source, targetBinId, 1);
                 }
-            } 
-            else if (targetPoolEl && itemInfo.source !== 'pool') {
+            }
+            // 待分箱區 → 垃圾桶區
+            else if (targetTrashEl && itemInfo.source === 'pool') {
+                const itemData = AppState.pool.get(itemInfo.code);
+                if (!itemData) return;
+                if (itemData.quantity > 1) {
+                    showQuantityModal(itemData, 'pool', 'trash');
+                } else {
+                    moveItem(itemInfo.code, 'pool', 'trash', 1);
+                }
+            }
+            // 垃圾桶區 → 待分箱區 (還原)
+            else if (targetPoolEl && itemInfo.source === 'trash') {
+                const itemData = AppState.trash.get(itemInfo.code);
+                if (!itemData) return;
+                moveItem(itemInfo.code, 'trash', 'pool', itemData.quantity);
+            }
+            // 箱子 → 待分箱區
+            else if (targetPoolEl && itemInfo.source !== 'pool' && itemInfo.source !== 'trash') {
                 const sourceBinId = itemInfo.source;
                 const itemCode = itemInfo.code;
                 const sourceBinMap = AppState.bins.get(sourceBinId)?.items;
@@ -1298,6 +1409,7 @@
         localStorage.setItem('binningToolState_v72', JSON.stringify({
             pool: Array.from(AppState.pool.entries()),
             bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
+            trash: Array.from(AppState.trash.entries()),
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
         }));
     }
@@ -1306,7 +1418,8 @@
         if(!s) return;
         const d = JSON.parse(s);
         AppState.pool = new Map(d.pool);
-        AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}])); 
+        AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}]));
+        AppState.trash = new Map(d.trash || []);
         binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
         render();
     }
