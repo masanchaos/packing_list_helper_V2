@@ -63,6 +63,13 @@
         
         .scan-group { padding: 10px 20px 0 20px; background-color: #fff; flex-shrink: 0; }
         .scan-group label { font-weight: bold; color: #d63384; display: block; margin-bottom: 5px; }
+        #scan-mode-btn { width: 100%; margin-bottom: 8px; text-align: left; font-weight: bold; }
+        #scan-mode-btn.mode-intobox { background-color: #0d6efd; }
+        #scan-mode-btn.mode-intobox:hover { background-color: #0b5ed7; }
+        #scan-mode-btn.mode-addpool { background-color: #6c757d; }
+        #scan-mode-btn.mode-addpool:hover { background-color: #5c636a; }
+        #scan-mode-btn.mode-addintobox { background-color: #fd7e14; }
+        #scan-mode-btn.mode-addintobox:hover { background-color: #e36209; }
 
         .order-input, .command-group { padding: 15px 20px 0 20px; flex-shrink: 0; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
@@ -217,7 +224,8 @@
 
             <div class="scan-group">
                 <label for="scan-input">📦 商品掃描專用 (Enter 確認):</label>
-                <input type="text" id="scan-input" placeholder="在此掃描條碼：鎖定時入箱，未鎖定時新增..." autocomplete="off">
+                <button id="scan-mode-btn" type="button">掃描模式：② 新增到待分箱</button>
+                <input type="text" id="scan-input" placeholder="掃描條碼後按 Enter" autocomplete="off">
             </div>
 
             <div class="command-group"><label for="command-input">快速指令:</label><div style="display:flex; gap: 10px;">
@@ -302,7 +310,8 @@
     const itemListContent = document.getElementById('item-list-content');
     const binArea = document.getElementById('bin-area');
     const searchBox = document.getElementById('search-box');
-    const scanInput = document.getElementById('scan-input'); 
+    const scanInput = document.getElementById('scan-input');
+    const scanModeBtn = document.getElementById('scan-mode-btn');
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -338,7 +347,8 @@
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
-    let currentMode = 'outbound'; 
+    let currentMode = 'outbound';
+    let scanMode = 'addPool'; // 掃描模式：intoBox=鎖定時入箱 / addPool=未鎖定時新增 / addIntoBox=鎖定時新增並直接入箱
 
     // --- 核心渲染函式 ---
     function render() {
@@ -780,26 +790,39 @@
     });
 
     // --- 掃描框邏輯 ---
+    // --- 掃描模式（三段式切換）---
+    const SCAN_MODES = ['intoBox', 'addPool', 'addIntoBox'];
+    const SCAN_MODE_INFO = {
+        intoBox:    { label: '掃描模式：① 入箱（需待分箱有此商品）', cls: 'mode-intobox',    ph: '掃描條碼 → 從待分箱區移 1 個進「鎖定的箱子」' },
+        addPool:    { label: '掃描模式：② 新增到待分箱',           cls: 'mode-addpool',    ph: '掃描條碼 → 在待分箱區新增 / 數量 +1' },
+        addIntoBox: { label: '掃描模式：③ 新增並直接入箱',         cls: 'mode-addintobox', ph: '掃描條碼 → 直接在「鎖定的箱子」內 +1（不動待分箱區）' }
+    };
+    function applyScanMode() {
+        const info = SCAN_MODE_INFO[scanMode] || SCAN_MODE_INFO.addPool;
+        scanModeBtn.textContent = info.label;
+        scanModeBtn.className = info.cls;
+        scanInput.placeholder = info.ph;
+    }
+    applyScanMode();
+
+    scanModeBtn.addEventListener('click', () => {
+        const idx = SCAN_MODES.indexOf(scanMode);
+        scanMode = SCAN_MODES[(idx + 1) % SCAN_MODES.length];
+        applyScanMode();
+        saveStateToLocalStorage();
+        scanInput.focus();
+        const names = { intoBox: '① 入箱', addPool: '② 新增到待分箱', addIntoBox: '③ 新增並直接入箱' };
+        showToast(`已切換掃描模式：${names[scanMode]}`, 'info');
+    });
+
     scanInput.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
-        e.preventDefault(); 
+        e.preventDefault();
         const codeToScan = scanInput.value.trim();
         if (!codeToScan) return;
 
-        if (AppState.lockedBinId) {
-            const lockedBin = AppState.bins.get(AppState.lockedBinId);
-            if (lockedBin) {
-                const matchedItem = Array.from(AppState.pool.values()).find(
-                    item => item.code === codeToScan || item.barcode === codeToScan
-                );
-                if (matchedItem) {
-                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
-                    showToast(`已移動 1 個 "${matchedItem.name}" 至 ${lockedBin.name}`, 'success');
-                } else {
-                    showToast(`在待分箱區找不到商品 (代碼: ${codeToScan})`, 'error');
-                }
-            }
-        } else {
+        if (scanMode === 'addPool') {
+            // ② 未鎖定時新增：在待分箱區新增 / +1（與鎖定無關）
             let existingItem = AppState.pool.get(codeToScan);
             if (!existingItem) {
                 existingItem = Array.from(AppState.pool.values()).find(item => item.barcode === codeToScan);
@@ -814,6 +837,43 @@
             }
             render();
             saveStateToLocalStorage();
+        } else {
+            // ① 與 ③ 都需要先鎖定一個箱子
+            if (!AppState.lockedBinId || !AppState.bins.has(AppState.lockedBinId)) {
+                showToast('請先鎖定一個箱子（按箱子上的 🔒），或切換到②新增模式', 'error');
+                scanInput.value = '';
+                return;
+            }
+            const lockedBin = AppState.bins.get(AppState.lockedBinId);
+
+            if (scanMode === 'intoBox') {
+                // ① 鎖定時入箱：從待分箱區移 1 個進鎖定箱
+                const matchedItem = Array.from(AppState.pool.values()).find(
+                    item => item.code === codeToScan || item.barcode === codeToScan
+                );
+                if (matchedItem) {
+                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
+                    showToast(`已移動 1 個 "${matchedItem.name}" 至 ${lockedBin.name}`, 'success');
+                } else {
+                    showToast(`在待分箱區找不到商品 (代碼: ${codeToScan})`, 'error');
+                }
+            } else if (scanMode === 'addIntoBox') {
+                // ③ 鎖定時新增並直接入箱：一律直接在鎖定箱內 +1（不動待分箱區）
+                const binItems = lockedBin.items;
+                let binItem = binItems.get(codeToScan);
+                if (!binItem) {
+                    binItem = Array.from(binItems.values()).find(it => it.barcode === codeToScan);
+                }
+                if (binItem) {
+                    binItem.quantity += 1;
+                    showToast(`"${binItem.name}" 在 ${lockedBin.name} 內 +1 (目前: ${binItem.quantity})`, 'success');
+                } else {
+                    binItems.set(codeToScan, { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 });
+                    showToast(`已新增並放入 ${lockedBin.name}：${codeToScan}`, 'success');
+                }
+                render();
+                saveStateToLocalStorage();
+            }
         }
         scanInput.value = '';
     });
@@ -840,7 +900,7 @@
                 showToast('箱子已解鎖', 'info');
             } else {
                 AppState.lockedBinId = binId;
-                showToast(`${binData.name} 已鎖定！請使用上方黃色掃描框入箱。`, 'success');
+                showToast(`${binData.name} 已鎖定！掃描前請把上方掃描模式切到①入箱或③新增並入箱。`, 'success');
                 scanInput.focus();
             }
             render();
@@ -1432,6 +1492,7 @@
             pool: Array.from(AppState.pool.entries()),
             bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
             trash: Array.from(AppState.trash.entries()),
+            scanMode,
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
         }));
     }
@@ -1443,6 +1504,7 @@
         AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}]));
         AppState.trash = new Map(d.trash || []);
         binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
+        if (d.scanMode && SCAN_MODE_INFO[d.scanMode]) { scanMode = d.scanMode; applyScanMode(); }
         render();
     }
     orderNumberInput.addEventListener('input', saveStateToLocalStorage);
