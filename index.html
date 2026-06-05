@@ -70,6 +70,24 @@
         #scan-mode-btn.mode-addpool:hover { background-color: #5c636a; }
         #scan-mode-btn.mode-addintobox { background-color: #fd7e14; }
         #scan-mode-btn.mode-addintobox:hover { background-color: #e36209; }
+        #scan-log-btn { background-color: #17a2b8; padding: 5px 10px; font-size: 13px; margin-bottom: 10px; }
+        #scan-log-btn:hover { background-color: #138496; }
+        /* 掃描紀錄彈窗 */
+        #scan-log-list .log-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+        #scan-log-list .log-row:last-child { border-bottom: none; }
+        #scan-log-list .log-row.is-undone { opacity: 0.5; }
+        #scan-log-list .log-row.is-undone .log-result { text-decoration: line-through; }
+        #scan-log-list .log-row.is-error { background: #fff5f5; }
+        #scan-log-list .log-time { color: #888; flex-shrink: 0; }
+        #scan-log-list .log-mode-badge { color: #fff; border-radius: 4px; padding: 1px 6px; font-weight: bold; flex-shrink: 0; }
+        #scan-log-list .log-main { flex-grow: 1; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+        #scan-log-list .log-code { font-weight: bold; color: #0d6efd; word-break: break-all; }
+        #scan-log-list .log-name { color: #555; }
+        #scan-log-list .log-result { color: #333; }
+        #scan-log-list .log-undo-btn { background-color: #ffc107; color: #212529; padding: 3px 10px; font-size: 12px; flex-shrink: 0; }
+        #scan-log-list .log-undo-btn:hover { background-color: #e0a800; }
+        #scan-log-list .log-undone { color: #28a745; font-size: 12px; flex-shrink: 0; }
+        #scan-log-list .log-empty { text-align: center; color: #999; padding: 30px 10px; }
 
         .order-input, .command-group { padding: 15px 20px 0 20px; flex-shrink: 0; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
@@ -226,6 +244,7 @@
                 <label for="scan-input">📦 商品掃描專用 (Enter 確認):</label>
                 <button id="scan-mode-btn" type="button">掃描模式：② 新增到待分箱</button>
                 <input type="text" id="scan-input" placeholder="掃描條碼後按 Enter" autocomplete="off">
+                <button id="scan-log-btn" type="button">📜 掃描紀錄</button>
             </div>
 
             <div class="command-group"><label for="command-input">快速指令:</label><div style="display:flex; gap: 10px;">
@@ -298,6 +317,20 @@
         </div>
     </div>
 
+    <div id="scan-log-modal" class="modal-overlay">
+        <div class="modal-content" style="width: 560px; max-width: 92vw; text-align: left;">
+            <h3 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                <span>📜 掃描紀錄 <span class="item-count" id="scan-log-count">0</span></span>
+                <span style="display:flex; gap:6px;">
+                    <button id="scan-log-export-btn" style="background-color:#28a745; padding:5px 10px; font-size:13px;">匯出 CSV</button>
+                    <button id="scan-log-clear-btn" style="background-color:#dc3545; padding:5px 10px; font-size:13px;">清空紀錄</button>
+                </span>
+            </h3>
+            <div id="scan-log-list" style="max-height:50vh; overflow-y:auto; margin:10px 0; border:1px solid #eee; border-radius:6px;"></div>
+            <button id="scan-log-close-btn" style="background-color:#6c757d; width:100%;">關閉</button>
+        </div>
+    </div>
+
 <script>
     // --- DOM 元素獲取 ---
     const orderNumberInput = document.getElementById('order-number-input');
@@ -312,6 +345,8 @@
     const searchBox = document.getElementById('search-box');
     const scanInput = document.getElementById('scan-input');
     const scanModeBtn = document.getElementById('scan-mode-btn');
+    const scanLogBtn = document.getElementById('scan-log-btn');
+    const scanLogModal = document.getElementById('scan-log-modal');
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -343,7 +378,7 @@
     const newItemNameInput = document.getElementById('new-item-name');
     const newItemQtyInput = document.getElementById('new-item-qty');
     
-    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map() };
+    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), scanLog: [] };
     let binCounter = 0;
     let currentSearchTerm = '';
     let modalCallback = null;
@@ -659,6 +694,7 @@
             AppState.pool.clear();
             AppState.bins.clear();
             AppState.trash.clear();
+            AppState.scanLog = [];
             AppState.lockedBinId = null;
             binCounter = 0;
             orderNumberInput.value = '';
@@ -830,17 +866,21 @@
             if (existingItem) {
                 existingItem.quantity += 1;
                 showToast(`商品 "${existingItem.name}" 數量 +1 (目前: ${existingItem.quantity})`, 'success');
+                logScan({ mode: scanMode, code: codeToScan, name: existingItem.name, action: 'pool_add', itemCode: existingItem.code, loc: 'pool', qty: 1, result: `待分箱 +1 → ${existingItem.quantity}` });
             } else {
                 const newItem = { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 };
                 AppState.pool.set(codeToScan, newItem);
                 showToast(`已新增商品：${newItem.name}`, 'success');
+                logScan({ mode: scanMode, code: codeToScan, name: newItem.name, action: 'pool_add', itemCode: codeToScan, loc: 'pool', qty: 1, result: '新增到待分箱 (1)' });
             }
             render();
-            saveStateToLocalStorage();
         } else {
             // ① 與 ③ 都需要先鎖定一個箱子
             if (!AppState.lockedBinId || !AppState.bins.has(AppState.lockedBinId)) {
                 showToast('請先鎖定一個箱子（按箱子上的 🔒），或切換到②新增模式', 'error');
+                logScan({ mode: scanMode, code: codeToScan, name: '', action: 'error', itemCode: '', loc: '', qty: 0, result: '❌ 未鎖定箱子' });
+                saveStateToLocalStorage();
+                if (scanLogModal.style.display === 'flex') renderScanLog();
                 scanInput.value = '';
                 return;
             }
@@ -854,8 +894,10 @@
                 if (matchedItem) {
                     moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
                     showToast(`已移動 1 個 "${matchedItem.name}" 至 ${lockedBin.name}`, 'success');
+                    logScan({ mode: scanMode, code: codeToScan, name: matchedItem.name, action: 'into_box', itemCode: matchedItem.code, loc: AppState.lockedBinId, qty: 1, result: `移入 ${lockedBin.name}` });
                 } else {
                     showToast(`在待分箱區找不到商品 (代碼: ${codeToScan})`, 'error');
+                    logScan({ mode: scanMode, code: codeToScan, name: '', action: 'error', itemCode: '', loc: '', qty: 0, result: '❌ 待分箱找不到此商品' });
                 }
             } else if (scanMode === 'addIntoBox') {
                 // ③ 鎖定時新增並直接入箱：一律直接在鎖定箱內 +1（不動待分箱區）
@@ -867,15 +909,114 @@
                 if (binItem) {
                     binItem.quantity += 1;
                     showToast(`"${binItem.name}" 在 ${lockedBin.name} 內 +1 (目前: ${binItem.quantity})`, 'success');
+                    logScan({ mode: scanMode, code: codeToScan, name: binItem.name, action: 'box_add', itemCode: binItem.code, loc: AppState.lockedBinId, qty: 1, result: `${lockedBin.name} +1 → ${binItem.quantity}` });
                 } else {
                     binItems.set(codeToScan, { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 });
                     showToast(`已新增並放入 ${lockedBin.name}：${codeToScan}`, 'success');
+                    logScan({ mode: scanMode, code: codeToScan, name: `掃描新增商品 (${codeToScan})`, action: 'box_add', itemCode: codeToScan, loc: AppState.lockedBinId, qty: 1, result: `新增並放入 ${lockedBin.name} (1)` });
                 }
                 render();
-                saveStateToLocalStorage();
             }
         }
+        saveStateToLocalStorage();
+        if (scanLogModal.style.display === 'flex') renderScanLog();
         scanInput.value = '';
+    });
+
+    // --- 掃描紀錄（log）：記錄三種掃描、可逐筆復原、可匯出 CSV ---
+    const logEsc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    function logScan(entry) {
+        AppState.scanLog.push({ ts: Date.now(), undone: false, ...entry });
+        if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
+    }
+    function scanModeBadge(mode) {
+        const map = { intoBox: ['①', '#0d6efd'], addPool: ['②', '#6c757d'], addIntoBox: ['③', '#fd7e14'] };
+        const [sym, color] = map[mode] || ['?', '#6c757d'];
+        return `<span class="log-mode-badge" style="background:${color}">${sym}</span>`;
+    }
+    function renderScanLog() {
+        const list = document.getElementById('scan-log-list');
+        document.getElementById('scan-log-count').textContent = AppState.scanLog.length;
+        if (AppState.scanLog.length === 0) { list.innerHTML = '<div class="log-empty">尚無掃描紀錄</div>'; return; }
+        let html = '';
+        for (let i = AppState.scanLog.length - 1; i >= 0; i--) {
+            const en = AppState.scanLog[i];
+            const d = new Date(en.ts);
+            const tstr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+            let right = '';
+            if (en.action === 'error') right = '';
+            else if (en.undone) right = '<span class="log-undone">已復原</span>';
+            else right = `<button class="log-undo-btn" data-idx="${i}">復原</button>`;
+            html += `<div class="log-row ${en.undone ? 'is-undone' : ''} ${en.action === 'error' ? 'is-error' : ''}">`
+                + `<span class="log-time">${tstr}</span>${scanModeBadge(en.mode)}`
+                + `<span class="log-main"><span class="log-code">${logEsc(en.code)}</span>`
+                + `${en.name ? ` <span class="log-name">${logEsc(en.name)}</span>` : ''}`
+                + `<span class="log-result">${logEsc(en.result)}</span></span>${right}</div>`;
+        }
+        list.innerHTML = html;
+    }
+    function undoScan(idx) {
+        const en = AppState.scanLog[idx];
+        if (!en || en.undone || en.action === 'error') return;
+        let ok = false, reason = '';
+        if (en.action === 'pool_add') {
+            const it = AppState.pool.get(en.itemCode);
+            if (it && it.quantity >= 1) { it.quantity -= 1; if (it.quantity <= 0) AppState.pool.delete(en.itemCode); ok = true; }
+            else reason = '該商品已不在待分箱區';
+        } else if (en.action === 'box_add') {
+            const bin = AppState.bins.get(en.loc);
+            const it = bin && bin.items.get(en.itemCode);
+            if (it && it.quantity >= 1) { it.quantity -= 1; if (it.quantity <= 0) bin.items.delete(en.itemCode); ok = true; }
+            else reason = '該箱或商品已變動';
+        } else if (en.action === 'into_box') {
+            const bin = AppState.bins.get(en.loc);
+            if (bin && bin.items.has(en.itemCode)) { moveItem(en.itemCode, en.loc, 'pool', 1); ok = true; }
+            else reason = '該箱或商品已變動，無法移回';
+        }
+        if (ok) {
+            en.undone = true;
+            showToast(`已復原：${en.code}（${en.result}）`, 'success');
+            render();
+            saveStateToLocalStorage();
+            renderScanLog();
+        } else {
+            showToast(`無法復原：${reason || '狀態已改變'}`, 'error');
+        }
+    }
+    function exportScanLog() {
+        if (AppState.scanLog.length === 0) { showToast('沒有掃描紀錄可匯出', 'error'); return; }
+        const modeName = { intoBox: '①入箱', addPool: '②新增到待分箱', addIntoBox: '③新增並入箱' };
+        const f = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; };
+        let csv = '﻿時間,模式,掃描條碼,商品編號,商品名稱,結果,數量,位置,狀態\n';
+        AppState.scanLog.forEach(en => {
+            const tstr = new Date(en.ts).toLocaleString('zh-TW', { hour12: false });
+            const locName = en.loc === 'pool' ? '待分箱區' : (en.loc ? (AppState.bins.get(en.loc)?.name || en.loc) : '');
+            csv += [tstr, modeName[en.mode] || en.mode, en.code, en.itemCode || '', en.name || '', en.result, en.qty, locName, en.undone ? '已復原' : '有效'].map(f).join(',') + '\n';
+        });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        const now = new Date();
+        const order = orderNumberInput.value.trim() || 'NoOrder';
+        link.download = `${order}_掃描紀錄_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.csv`;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+    function clearScanLog() {
+        if (AppState.scanLog.length === 0) { showToast('紀錄已是空的', 'info'); return; }
+        if (confirm('確定清空掃描紀錄嗎？\n（只清除紀錄，不影響待分箱區與箱子的內容）')) {
+            AppState.scanLog = [];
+            saveStateToLocalStorage();
+            renderScanLog();
+            showToast('掃描紀錄已清空', 'success');
+        }
+    }
+    scanLogBtn.addEventListener('click', () => { renderScanLog(); scanLogModal.style.display = 'flex'; });
+    document.getElementById('scan-log-close-btn').addEventListener('click', () => { scanLogModal.style.display = 'none'; });
+    scanLogModal.addEventListener('click', (e) => { if (e.target === scanLogModal) scanLogModal.style.display = 'none'; });
+    document.getElementById('scan-log-export-btn').addEventListener('click', exportScanLog);
+    document.getElementById('scan-log-clear-btn').addEventListener('click', clearScanLog);
+    document.getElementById('scan-log-list').addEventListener('click', (e) => {
+        const btn = e.target.closest('.log-undo-btn');
+        if (btn) undoScan(parseInt(btn.dataset.idx, 10));
     });
 
     binArea.addEventListener('click', (e) => {
@@ -1492,6 +1633,7 @@
             pool: Array.from(AppState.pool.entries()),
             bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
             trash: Array.from(AppState.trash.entries()),
+            scanLog: AppState.scanLog,
             scanMode,
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
         }));
@@ -1503,6 +1645,7 @@
         AppState.pool = new Map(d.pool);
         AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}]));
         AppState.trash = new Map(d.trash || []);
+        AppState.scanLog = d.scanLog || [];
         binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
         if (d.scanMode && SCAN_MODE_INFO[d.scanMode]) { scanMode = d.scanMode; applyScanMode(); }
         render();
