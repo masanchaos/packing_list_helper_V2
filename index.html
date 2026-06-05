@@ -91,6 +91,26 @@
         #scan-log-list .log-undo-btn:hover { background-color: #e0a800; }
         #scan-log-list .log-undone { color: #28a745; font-size: 12px; flex-shrink: 0; }
         #scan-log-list .log-empty { text-align: center; color: #999; padding: 30px 10px; }
+        /* 從 JENJAN 訂單匯入 */
+        .import-group { padding: 12px 20px 0 20px; flex-shrink: 0; }
+        .import-head { display: flex; align-items: center; gap: 6px; font-weight: bold; margin-bottom: 6px; }
+        .import-dot { width: 9px; height: 9px; border-radius: 50%; background: #adb5bd; flex-shrink: 0; }
+        #import-group.bridge-on .import-dot { background: #28a745; }
+        #import-group .import-body { display: none; }
+        #import-group.bridge-on .import-body { display: block; }
+        #import-group .import-offline { font-size: 12px; color: #888; line-height: 1.6; }
+        #import-group.bridge-on .import-offline { display: none; }
+        .import-row { display: flex; gap: 6px; }
+        #import-type { padding: 8px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        #import-sn { flex-grow: 1; min-width: 0; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+        #import-btn { background-color: #0d6efd; padding: 8px 14px; }
+        #import-btn:hover { background-color: #0b5ed7; }
+        #import-btn:disabled { background-color: #9ec5fe; cursor: not-allowed; }
+        .import-status { font-size: 12px; margin-top: 6px; min-height: 16px; }
+        .import-status.ok { color: #28a745; }
+        .import-status.err { color: #dc3545; }
+        .import-retry { background: none; color: #0d6efd; border: none; padding: 0; font-size: 12px; cursor: pointer; text-decoration: underline; }
+        .import-retry:hover { background: none; color: #0b5ed7; }
 
         .order-input, .command-group { padding: 15px 20px 0 20px; flex-shrink: 0; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
@@ -231,6 +251,21 @@
     <div class="container">
         <div id="control-container" class="panel">
             <div class="order-input"><label for="order-number-input">訂單號碼:</label><input type="text" id="order-number-input" placeholder="請在此輸入本次作業的訂單號碼"></div>
+            <div class="import-group" id="import-group">
+                <div class="import-head"><span class="import-dot"></span>📥 從 JENJAN 訂單匯入</div>
+                <div class="import-body">
+                    <div class="import-row">
+                        <select id="import-type">
+                            <option value="entry">入倉單</option>
+                            <option value="shipment">出貨單</option>
+                        </select>
+                        <input type="text" id="import-sn" placeholder="輸入單號後按 Enter" autocomplete="off">
+                        <button id="import-btn" type="button">匯入</button>
+                    </div>
+                    <div class="import-status" id="import-status"></div>
+                </div>
+                <div class="import-offline">未偵測到 JENJAN-AGENT 橋接。請先啟動 <code>python -m src.bridge</code> <button class="import-retry" id="import-retry" type="button">重試偵測</button></div>
+            </div>
             <div class="controls">
                 <textarea id="data-input" placeholder="1. 在此貼上商品資料..."></textarea>
                 <div class="button-group">
@@ -364,6 +399,12 @@
     const scanModeBtn = document.getElementById('scan-mode-btn');
     const scanLogBtn = document.getElementById('scan-log-btn');
     const scanLogModal = document.getElementById('scan-log-modal');
+    const importGroup = document.getElementById('import-group');
+    const importType = document.getElementById('import-type');
+    const importSn = document.getElementById('import-sn');
+    const importBtn = document.getElementById('import-btn');
+    const importStatus = document.getElementById('import-status');
+    const importRetry = document.getElementById('import-retry');
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -1035,6 +1076,70 @@
         const btn = e.target.closest('.log-undo-btn');
         if (btn) undoScan(parseInt(btn.dataset.idx, 10));
     });
+
+    // --- 從 JENJAN 訂單匯入（透過本機橋接 src/bridge.py）---
+    const BRIDGE_URL = 'http://localhost:8787';
+    function setImportStatus(msg, cls) {
+        importStatus.textContent = msg || '';
+        importStatus.className = 'import-status' + (cls ? ' ' + cls : '');
+    }
+    async function detectBridge() {
+        try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 1500);
+            const r = await fetch(`${BRIDGE_URL}/health`, { signal: ctrl.signal, cache: 'no-store' });
+            clearTimeout(t);
+            const j = await r.json();
+            return !!(r.ok && j && j.ok);
+        } catch (e) { return false; }
+    }
+    async function refreshBridge() {
+        const ok = await detectBridge();
+        importGroup.classList.toggle('bridge-on', ok);
+        return ok;
+    }
+    async function importOrder() {
+        const type = importType.value;
+        const sn = importSn.value.trim();
+        if (!sn) { showToast('請輸入單號', 'error'); importSn.focus(); return; }
+        importBtn.disabled = true;
+        setImportStatus('查詢中…', '');
+        try {
+            const r = await fetch(`${BRIDGE_URL}/packing/order?type=${encodeURIComponent(type)}&sn=${encodeURIComponent(sn)}`, { cache: 'no-store' });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) throw new Error(j && j.error ? j.error : `HTTP ${r.status}`);
+            const items = j.items || [];
+            if (!items.length) { setImportStatus('這張單沒有商品明細', 'err'); showToast('查無商品明細', 'error'); return; }
+            let lines = 0, units = 0;
+            items.forEach(it => {
+                const code = String(it.code || '').trim();
+                if (!code) return;
+                const qty = parseInt(it.qty, 10) || 0;
+                const name = (it.name || '').trim() || code;
+                const ex = AppState.pool.get(code);
+                if (ex) { ex.quantity += qty; } else { AppState.pool.set(code, { code, barcode: 'NA', name, quantity: qty }); }
+                lines++; units += qty;
+            });
+            render();
+            saveStateToLocalStorage();
+            const label = type === 'entry' ? '入倉單' : '出貨單';
+            setImportStatus(`已匯入 ${lines} 項 / ${units} 件（${label} ${sn}）`, 'ok');
+            showToast(`已從${label} ${sn} 匯入 ${lines} 項、${units} 件`, 'success');
+            importSn.value = '';
+            importSn.focus();
+        } catch (e) {
+            const msg = (e && e.message) ? e.message : String(e);
+            setImportStatus('匯入失敗：' + msg, 'err');
+            showToast('匯入失敗：' + msg, 'error');
+            refreshBridge();
+        } finally {
+            importBtn.disabled = false;
+        }
+    }
+    importBtn.addEventListener('click', importOrder);
+    importSn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); importOrder(); } });
+    importRetry.addEventListener('click', refreshBridge);
+    refreshBridge();
 
     binArea.addEventListener('click', (e) => {
         const binEl = e.target.closest('.bin');
