@@ -402,6 +402,9 @@
         h2 { border-bottom-color: #e1e1e6; }
         .item, #trash-area .item, .bin, #trash-section, .bin.locked { background-color: #fbfbfd; }
         .bin.completed .item { background-color: rgba(255,255,255,0.45); }
+        /* 有商品 vs 空箱：一眼區隔（鎖定/完成狀態優先，不被覆蓋）*/
+        .bin.filled:not(.locked):not(.completed) { background-color: #ffffff; border-style: solid; border-color: #e5e5ea; }
+        .bin.empty:not(.locked):not(.completed) { background-color: #ebebef; border-style: dashed; border-color: #c8c8d0; }
         textarea, #search-box, #scan-input, .order-input input, .command-group input,
         #import-sn, #import-type, #trash-search-box, .bin .tracking-input, .bin .note-input, .modal-content input { background-color: #fdfdfe; }
         .modal-content { background-color: #f7f7fa; }
@@ -511,7 +514,7 @@
     <div id="quantity-modal" class="modal-overlay">
         <div class="modal-content">
             <h3 id="modal-title">確認數量</h3>
-            <p>要將多少數量的 "<span id="modal-item-name"></span>" 放入此箱？</p>
+            <p>要移動多少個「<span id="modal-item-name"></span>」到 <strong id="modal-target-name"></strong>？</p>
             <input type="number" id="modal-quantity-input" min="1">
             <div class="button-group" style="justify-content: center;">
                 <button id="modal-confirm-btn">確認</button>
@@ -672,6 +675,7 @@
         for(const [binId, binData] of sortedBins) {
             const binEl = document.createElement('div');
             binEl.className = 'bin';
+            binEl.classList.add(binData.items.size > 0 ? 'filled' : 'empty');
             if (binId === AppState.lockedBinId) binEl.classList.add('locked');
             if (binData.completed) binEl.classList.add('completed');
             binEl.dataset.binId = binId;
@@ -868,6 +872,7 @@
     
     function showQuantityModal(item, sourceId, targetId) {
         modalItemName.textContent = item.name;
+        const tn = document.getElementById('modal-target-name'); if (tn) tn.textContent = locLabel(targetId);
         modalQuantityInput.value = item.quantity;
         modalQuantityInput.max = item.quantity;
         quantityModal.style.display = 'flex';
@@ -876,6 +881,15 @@
             moveItem(item.code, sourceId, targetId, amount);
             modalCallback = null;
         };
+    }
+
+    // 跨區移動：多件商品先問要移幾個，單件直接移
+    function moveItemAsk(code, srcId, tgtId) {
+        const srcMap = getItemMap(srcId);
+        const item = srcMap && srcMap.get(code);
+        if (!item) return;
+        if (item.quantity > 1) showQuantityModal(item, srcId, tgtId);
+        else moveItem(code, srcId, tgtId, item.quantity);
     }
 
     function hideQuantityModal() {
@@ -1111,9 +1125,7 @@
             return;
         }
         const target = act === 'to-recycle' ? 'recycle' : act === 'to-trash' ? 'trash' : 'pool';
-        const name = item.name, qty = item.quantity;
-        moveItem(code, source, target, qty);
-        showToast(`已將 ${qty} 個 "${name}" 移到${locLabel(target)}`, 'info');
+        moveItemAsk(code, source, target);
     });
 
     // --- 處置區分頁切換（未分類 / 垃圾桶）---
@@ -1569,35 +1581,17 @@
         try {
             const itemInfo = JSON.parse(e.dataTransfer.getData('application/json'));
             if (!itemInfo) return;
-            // 待分箱區 → 箱子
+            // 待分箱區 → 箱子（多件先問數量）
             if (targetBinEl && itemInfo.source === 'pool') {
-                const targetBinId = targetBinEl.dataset.binId;
-                const itemData = AppState.pool.get(itemInfo.code);
-                if (!itemData) return;
-                if (itemData.quantity > 1) {
-                    showQuantityModal(itemData, itemInfo.source, targetBinId);
-                } else {
-                    moveItem(itemInfo.code, itemInfo.source, targetBinId, 1);
-                }
+                moveItemAsk(itemInfo.code, itemInfo.source, targetBinEl.dataset.binId);
             }
-            // 任意來源 → 處置區的「當前分頁」（未分類 / 垃圾桶）
+            // 任意來源 → 處置區的「當前分頁」（未分類 / 垃圾桶；多件先問數量）
             else if (targetTrashEl && itemInfo.source !== trashSection.dataset.active) {
-                const activeDisp = trashSection.dataset.active; // 'trash' | 'recycle'
-                const srcMap = getItemMap(itemInfo.source);
-                const itemData = srcMap && srcMap.get(itemInfo.code);
-                if (!itemData) return;
-                if (itemData.quantity > 1 && itemInfo.source === 'pool') {
-                    showQuantityModal(itemData, 'pool', activeDisp);
-                } else {
-                    moveItem(itemInfo.code, itemInfo.source, activeDisp, itemData.quantity);
-                }
+                moveItemAsk(itemInfo.code, itemInfo.source, trashSection.dataset.active);
             }
-            // 未分類 / 垃圾桶 / 箱子 → 待分箱區（還原 / 取出）
+            // 未分類 / 垃圾桶 / 箱子 → 待分箱區（還原 / 取出；多件先問數量）
             else if (targetPoolEl && itemInfo.source !== 'pool') {
-                const srcMap = getItemMap(itemInfo.source);
-                const itemData = srcMap && srcMap.get(itemInfo.code);
-                if (!itemData) return;
-                moveItem(itemInfo.code, itemInfo.source, 'pool', itemData.quantity);
+                moveItemAsk(itemInfo.code, itemInfo.source, 'pool');
             }
         } catch (err) { console.error("拖曳資料解析失敗:", err); }
     });
@@ -1758,20 +1752,23 @@
             let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
             
+            // 商品編號/國際條碼若為純數字 → 用 ="..." 讓 Excel 視為文字（避免科學記號、保留前導零）
+            const csvText = (v) => { const s = String(v ?? ''); return /^[0-9]+$/.test(s) ? `"=""${s}"""` : formatCsvField(s); };
+            const fmtRow = (arr) => arr.map((v, i) => (i === 3 || i === 4) ? csvText(v) : formatCsvField(v)).join(',');
             binsArray.forEach((bin, index) => {
-                const note = bin.note || ''; 
+                const note = bin.note || '';
                 const binName = `${index + 1}`;
                 if (bin.items.size === 0) { 
-                    csvContent += [orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note].map(formatCsvField).join(',') + "\n"; 
+                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note]) + "\n"; 
                 } else { 
                     bin.items.forEach(item => { 
-                        csvContent += [orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note].map(formatCsvField).join(',') + "\n"; 
+                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note]) + "\n"; 
                     }); 
                 }
             });
             // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += [orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, ''].map(formatCsvField).join(',') + "\n";
+                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '']) + "\n";
             });
             return csvContent;
         }
@@ -2112,6 +2109,8 @@
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
             const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
+            // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
+            const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
             
             for(let i=1; i<rows.length; i++){
                 const cols = parseCsvRow(rows[i]); 
@@ -2131,8 +2130,8 @@
                 let itemQty = 0;
 
                 if (cNote >= 0) note = cols[cNote] || '';
-                itemCode = cols[cCode] || '';
-                itemBarcode = cols[cBarcode] || '';
+                itemCode = unwrapExcelText(cols[cCode]);
+                itemBarcode = unwrapExcelText(cols[cBarcode]);
                 itemName = cols[cName] || '';
                 itemQty = parseInt(cols[cQty]) || 0;
 
