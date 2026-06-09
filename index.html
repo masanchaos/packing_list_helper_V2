@@ -226,6 +226,8 @@
         #trash-hint { font-size: 12px; font-weight: normal; color: #c98bb0; margin-left: 4px; }
         #clear-trash-btn { background-color: #dc3545; padding: 4px 10px; font-size: 13px; }
         #clear-trash-btn:hover { background-color: #c82333; }
+        #dump-pool-btn { background-color: #d63384; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
+        #dump-pool-btn:hover { background-color: #b02a6b; }
         #trash-area { max-height: 130px; overflow-y: auto; padding: 4px 10px 10px 10px; }
         #trash-area .item { background-color: #fde7f1; border-color: #f3c6dd; margin-bottom: 8px; }
         #trash-area .item strong { color: #b02a6b; }
@@ -292,7 +294,10 @@
         </div>
         <div id="item-pool-container" class="panel">
             <div class="list-header">
-                <h2 id="pool-title">待分箱區</h2>
+                <h2 id="pool-title">
+                    <span>待分箱區 <span class="item-count" id="pool-count">0</span></span>
+                    <button id="dump-pool-btn" type="button" title="把待分箱區剩餘商品全部移到垃圾桶區">剩餘全丟垃圾桶</button>
+                </h2>
                 <input type="text" id="search-box" placeholder="🔍 在此輸入關鍵字「篩選」列表..." style="margin: 0 20px 10px 20px; width: calc(100% - 40px);">
             </div>
             <div id="item-list-content"></div>
@@ -414,6 +419,8 @@
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
+    const poolCount = document.getElementById('pool-count');
+    const dumpPoolBtn = document.getElementById('dump-pool-btn');
     const binAreaTitleWrapper = document.getElementById('bin-area-title-wrapper');
     const binAreaTitle = document.createElement('h2');
     binAreaTitle.id = 'bin-area-title';
@@ -560,7 +567,7 @@
 
     function updateCounts() {
         const poolTotal = Array.from(AppState.pool.values()).reduce((sum, item) => sum + (item.quantity || 0), 0);
-        poolTitle.innerHTML = `待分箱區 <span class="item-count">${poolTotal}</span>`;
+        if (poolCount) poolCount.textContent = poolTotal;
         let binsTotal = 0;
         AppState.bins.forEach((binData, binId) => {
             const binTotal = Array.from(binData.items.values()).reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -874,6 +881,22 @@
             render();
             saveStateToLocalStorage();
             showToast("垃圾桶區已清空。", "success");
+        }
+    });
+
+    // 一鍵把待分箱區剩餘商品全部移到垃圾桶區
+    dumpPoolBtn.addEventListener('click', () => {
+        if (AppState.pool.size === 0) { showToast("待分箱區是空的。", "info"); return; }
+        const lines = AppState.pool.size;
+        if (confirm(`確定把待分箱區剩餘的 ${lines} 項商品全部移到垃圾桶區嗎？\n（之後仍可從垃圾桶區拖回，或用「清空垃圾桶」永久刪除）`)) {
+            for (const [code, item] of AppState.pool) {
+                const ex = AppState.trash.get(code);
+                if (ex) { ex.quantity += item.quantity; } else { AppState.trash.set(code, { ...item }); }
+            }
+            AppState.pool.clear();
+            render();
+            saveStateToLocalStorage();
+            showToast(`已將待分箱區 ${lines} 項商品全部移到垃圾桶區。`, "success");
         }
     });
 
@@ -1381,7 +1404,7 @@
             return `${orderNumber}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}_packing_list${extension}`;
         }
         function exportCSV() {
-            if (AppState.bins.size === 0) { showToast("沒有任何已分箱的資料可以匯出！", "error"); return; }
+            if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const binsArray = Array.from(AppState.bins.values());
             const totalBins = binsArray.length;
@@ -1399,6 +1422,10 @@
                         csvContent += [orderNumber, binName, bin.tracking, note, item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n"; 
                     }); 
                 }
+            });
+            // 垃圾桶區也一併輸出（箱號標示為「垃圾桶」）
+            AppState.trash.forEach(item => {
+                csvContent += [orderNumber, '垃圾桶', '', '', item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n";
             });
             const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
