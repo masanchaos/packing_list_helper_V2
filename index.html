@@ -329,6 +329,18 @@
         .toast-notification { background-color: rgba(28,28,30,0.92); border-radius: 12px; }
         .toast-notification.error { background-color: rgba(255,59,48,0.96); }
         .toast-notification.success { background-color: rgba(52,199,89,0.96); }
+
+        /* === 柔化淺色：降低整體亮度，避免大片純白刺眼 === */
+        body { background-color: #e6e6ec; }
+        .panel { background-color: #f0f1f4; box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 6px 18px rgba(0,0,0,0.03); }
+        .scan-group { background-color: transparent; }
+        .controls { border-bottom-color: #e1e1e6; }
+        h2 { border-bottom-color: #e1e1e6; }
+        .item, #trash-area .item, .bin, #trash-section, .bin.locked { background-color: #fbfbfd; }
+        .bin.completed .item { background-color: rgba(255,255,255,0.45); }
+        textarea, #search-box, #scan-input, .order-input input, .command-group input,
+        #import-sn, #import-type, #trash-search-box, .bin .tracking-input, .bin .note-input, .modal-content input { background-color: #fdfdfe; }
+        .modal-content { background-color: #f7f7fa; }
     </style>
 </head>
 <body class="locked">
