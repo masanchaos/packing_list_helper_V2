@@ -249,23 +249,86 @@
         }
         .trash-item-btn:hover { opacity: 1; background-color: #e9ecef; }
 
-        /* === 簡潔統一配色（中性為主，主要動作藍、危險紅）=== */
-        button, .button-label { background-color: #3f4858; }
-        button:hover, .button-label:hover { background-color: #2c333f; }
-        button:disabled { background-color: #aeb4bd; }
-        #parse-btn, #import-btn, #execute-command-btn, #modal-confirm-btn, #manual-add-confirm-btn, #scan-log-export-btn { background-color: #2563eb; }
-        #parse-btn:hover, #import-btn:hover, #execute-command-btn:hover, #modal-confirm-btn:hover, #manual-add-confirm-btn:hover, #scan-log-export-btn:hover { background-color: #1d4ed8; }
-        #clear-data-btn, #clear-trash-btn, #scan-log-clear-btn { background-color: #dc3545; }
-        #clear-data-btn:hover, #clear-trash-btn:hover, #scan-log-clear-btn:hover { background-color: #c82333; }
+        /* ============================================================
+           iOS 風格主題（覆蓋上方樣式）
+           系統色：藍 #007aff、紅 #ff3b30、綠 #34c759、橘 #ff9500、灰 #8e8e93
+           背景 #f2f2f7、卡片白、圓角、藍色聚焦
+           ============================================================ */
+        body { background-color: #f2f2f7; color: #1c1c1e; }
+        .container { gap: 16px; padding: 16px; }
+        .panel { border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.04); }
+        h2 { color: #1c1c1e; border-bottom: 1px solid #e5e5ea; font-weight: 700; }
+        .controls { border-bottom: 1px solid #e5e5ea; }
+
+        /* 按鈕：次要＝淺灰底藍字、主要＝實心藍、危險＝實心紅 */
+        button, .button-label { background-color: #e5e5ea; color: #007aff; border-radius: 10px; font-weight: 600; transition: background-color 0.15s, opacity 0.1s; }
+        button:hover, .button-label:hover { background-color: #d8d8dd; color: #007aff; }
+        button:active, .button-label:active { opacity: 0.55; }
+        button:disabled { background-color: #e5e5ea; color: #bcbcc1; cursor: not-allowed; }
+        /* 主要動作（實心藍）*/
+        #parse-btn, #import-btn, #execute-command-btn, #modal-confirm-btn, #manual-add-confirm-btn, #scan-log-export-btn { background-color: #007aff; color: #fff; }
+        #parse-btn:hover, #import-btn:hover, #execute-command-btn:hover, #modal-confirm-btn:hover, #manual-add-confirm-btn:hover, #scan-log-export-btn:hover { background-color: #0071e3; color: #fff; }
+        #import-btn:disabled { background-color: #a9d2ff; color: #fff; }
+        /* 危險動作（實心紅）*/
+        #clear-data-btn, #clear-trash-btn, #scan-log-clear-btn { background-color: #ff3b30; color: #fff; }
+        #clear-data-btn:hover, #clear-trash-btn:hover, #scan-log-clear-btn:hover { background-color: #e8352b; color: #fff; }
+        /* 次要（淺灰底藍字，覆蓋舊彩色）*/
         #mode-switch-btn, #mode-switch-btn:hover,
         #mode-switch-btn.inbound-mode, #mode-switch-btn.inbound-mode:hover,
         #mode-switch-btn.check-mode, #mode-switch-btn.check-mode:hover,
         #scan-mode-btn.mode-intobox, #scan-mode-btn.mode-addpool, #scan-mode-btn.mode-addintobox,
         #export-btn, #export-a4-pdf-btn, #export-a5-pdf-btn, #export-thermal-pdf-btn,
-        #quick-add-bins-btn, #scan-log-btn, #dump-pool-btn, #restore-trash-btn { background-color: #3f4858; }
+        #quick-add-bins-btn, #scan-log-btn, #dump-pool-btn, #restore-trash-btn { background-color: #e5e5ea; color: #007aff; }
         #scan-mode-btn.mode-intobox:hover, #scan-mode-btn.mode-addpool:hover, #scan-mode-btn.mode-addintobox:hover,
         #export-btn:hover, #export-a4-pdf-btn:hover, #export-a5-pdf-btn:hover, #export-thermal-pdf-btn:hover,
-        #quick-add-bins-btn:hover, #scan-log-btn:hover, #dump-pool-btn:hover, #restore-trash-btn:hover { background-color: #2c333f; }
+        #quick-add-bins-btn:hover, #scan-log-btn:hover, #dump-pool-btn:hover, #restore-trash-btn:hover { background-color: #d8d8dd; color: #007aff; }
+
+        /* 輸入框：iOS 圓角、白底、藍色聚焦 */
+        textarea, #search-box, #scan-input, .order-input input, .command-group input,
+        #import-sn, #import-type, #trash-search-box, .bin .tracking-input, .bin .note-input, .modal-content input {
+            border: 1px solid #d1d1d6; border-radius: 10px; background-color: #fff; color: #1c1c1e;
+        }
+        textarea:focus, #search-box:focus, .order-input input:focus, .command-group input:focus,
+        #import-sn:focus, #trash-search-box:focus, #scan-input:focus, .modal-content input:focus {
+            outline: none; border-color: #007aff; box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+        }
+        #scan-input { border: 1px solid #d1d1d6; background-color: #fff; }
+        .scan-group label { color: #1c1c1e; }
+
+        /* 數量徽章：iOS 灰膠囊 */
+        .item-count { background-color: #8e8e93; border-radius: 20px; }
+
+        /* 商品卡片：白底細框圓角 */
+        .item { background-color: #fff; border: 1px solid #e5e5ea; border-radius: 12px; }
+        .item strong { color: #1c1c1e; }
+        .item .details { color: #8e8e93; }
+
+        /* 箱子：iOS 卡片 */
+        .bin { background-color: #fff; border: 1px solid #e5e5ea; border-radius: 14px; }
+        .bin h3 { color: #1c1c1e; }
+        .bin.locked { border: 1.5px solid #ff9500; box-shadow: 0 0 0 3px rgba(255,149,0,0.18); background-color: #fff; }
+        .bin.completed { border: 1.5px solid #34c759 !important; background-color: #f1fbf4 !important; box-shadow: 0 0 0 3px rgba(52,199,89,0.15); }
+        .bin.completed::after { color: rgba(52,199,89,0.18); border-color: rgba(52,199,89,0.18); }
+
+        /* 拖放高亮 / 狀態：iOS 藍綠 */
+        .drag-over { background-color: #e5f1ff; border-color: #007aff !important; }
+        #import-group.bridge-on .import-dot { background: #34c759; }
+        .import-status.ok { color: #34c759; }
+        .import-status.err { color: #ff3b30; }
+        .import-retry, .import-retry:hover { color: #007aff; }
+
+        /* 未能分類商品區：iOS 群組卡 */
+        #trash-section { border: 1px solid #d1d1d6; background-color: #fff; }
+        #trash-section.drag-over { background-color: #e5f1ff; border-color: #007aff !important; }
+        #trash-title { color: #1c1c1e; }
+        #trash-title .item-count { background-color: #8e8e93; }
+        #trash-area .item { background-color: #fff; border-color: #e5e5ea; }
+
+        /* 彈窗與 Toast：iOS 圓角 */
+        .modal-content { border-radius: 16px; }
+        .toast-notification { background-color: rgba(28,28,30,0.92); border-radius: 12px; }
+        .toast-notification.error { background-color: rgba(255,59,48,0.96); }
+        .toast-notification.success { background-color: rgba(52,199,89,0.96); }
     </style>
 </head>
 <body class="locked">
