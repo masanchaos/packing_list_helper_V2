@@ -278,7 +278,7 @@
                     <button id="parse-btn">解析資料</button>
                     <label for="import-csv-input" class="button-label" style="background-color:#ffc107; color:#212529;">還原CSV備份</label>
                     <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
-                    <button id="manual-add-btn" style="background-color: #17a2b8; display: none;">手動新增商品</button>
+                    <button id="manual-add-btn" style="background-color: #17a2b8;">手動新增商品</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
@@ -825,14 +825,14 @@
             modeSwitchBtn.textContent = '目前模式：檢查模式';
             modeSwitchBtn.className = 'check-mode';
             dataInput.placeholder = '1. 在此貼上簡易資料 (格式：商品編號 數量)...\\n範例：136-G00001-BK-M 2';
-            manualAddBtn.style.display = 'none'; 
+            manualAddBtn.style.display = 'inline-block'; 
             showToast('已切換至【檢查模式】', 'info');
         } else {
             currentMode = 'outbound';
             modeSwitchBtn.textContent = '目前模式：出貨模式';
             modeSwitchBtn.className = ''; 
             dataInput.placeholder = '1. 在此貼上商品資料...';
-            manualAddBtn.style.display = 'none';
+            manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【出貨模式】', 'info');
         }
     });
