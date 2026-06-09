@@ -343,11 +343,17 @@
     
     <div id="manual-add-modal" class="modal-overlay">
         <div class="modal-content" style="width: 400px; text-align: left;">
-            <h3>新增商品 (入倉模式)</h3>
+            <h3>新增商品</h3>
             <label for="new-item-code">商品編號:</label>
-            <input type="text" id="new-item-code" style="width: 100%; margin-bottom: 10px;" placeholder="輸入編號">
+            <div style="display:flex; gap:6px; margin-bottom:10px;">
+                <input type="text" id="new-item-code" style="flex:1; min-width:0; margin:0;" placeholder="留空或按右鈕 = NoBarCode">
+                <button id="new-item-code-auto" type="button" style="background-color:#6c757d; white-space:nowrap;">無編號</button>
+            </div>
             <label for="new-item-name">商品名稱:</label>
-            <input type="text" id="new-item-name" style="width: 100%; margin-bottom: 10px;" placeholder="輸入名稱">
+            <div style="display:flex; gap:6px; margin-bottom:10px;">
+                <input type="text" id="new-item-name" style="flex:1; min-width:0; margin:0;" placeholder="留空或按右鈕 = NoName">
+                <button id="new-item-name-auto" type="button" style="background-color:#6c757d; white-space:nowrap;">無名稱</button>
+            </div>
             <label for="new-item-qty">數量:</label>
             <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 20px;" min="1" value="1">
             <div class="button-group" style="justify-content: center;">
@@ -435,6 +441,8 @@
     const newItemCodeInput = document.getElementById('new-item-code');
     const newItemNameInput = document.getElementById('new-item-name');
     const newItemQtyInput = document.getElementById('new-item-qty');
+    const newItemCodeAutoBtn = document.getElementById('new-item-code-auto');
+    const newItemNameAutoBtn = document.getElementById('new-item-name-auto');
     
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), scanLog: [] };
     let binCounter = 0;
@@ -1275,6 +1283,22 @@
     modalCancelBtn.addEventListener('click', hideQuantityModal);
     choiceCancelBtn.addEventListener('click', hideChoiceModal);
 
+    // --- 無編號/無名稱：依現有項目自動接續編號 (NoBarCode1, NoName1 ...) ---
+    function nextNoBarCode() {
+        let max = 0;
+        const scan = (m) => { for (const c of m.keys()) { const mt = /^NoBarCode(\d+)$/i.exec(c); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
+        scan(AppState.pool); scan(AppState.trash);
+        for (const bin of AppState.bins.values()) scan(bin.items);
+        return 'NoBarCode' + (max + 1);
+    }
+    function nextNoName() {
+        let max = 0;
+        const scan = (m) => { for (const it of m.values()) { const mt = /^NoName(\d+)$/i.exec(it.name || ''); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
+        scan(AppState.pool); scan(AppState.trash);
+        for (const bin of AppState.bins.values()) scan(bin.items);
+        return 'NoName' + (max + 1);
+    }
+
     manualAddBtn.addEventListener('click', () => {
         newItemCodeInput.value = '';
         newItemNameInput.value = '';
@@ -1282,21 +1306,24 @@
         manualAddModal.style.display = 'flex';
         newItemCodeInput.focus();
     });
+    newItemCodeAutoBtn.addEventListener('click', () => { newItemCodeInput.value = nextNoBarCode(); newItemNameInput.focus(); });
+    newItemNameAutoBtn.addEventListener('click', () => { newItemNameInput.value = nextNoName(); newItemQtyInput.focus(); });
     manualAddCancelBtn.addEventListener('click', () => { manualAddModal.style.display = 'none'; });
     manualAddConfirmBtn.addEventListener('click', () => {
-        const code = newItemCodeInput.value.trim();
-        const name = newItemNameInput.value.trim();
+        let code = newItemCodeInput.value.trim();
+        let name = newItemNameInput.value.trim();
         const qty = parseInt(newItemQtyInput.value, 10);
-        if (!code || !name) { showToast("請輸入完整的編號與名稱！", "error"); return; }
         if (isNaN(qty) || qty <= 0) { showToast("數量必須大於 0！", "error"); return; }
+        // 規則：商品一定要有編號與名稱；留空就自動給 NoBarCode/NoName（也可自行填寫）
+        if (!code) code = nextNoBarCode();
+        if (!name) name = nextNoName();
         if (AppState.pool.has(code)) {
             const existingItem = AppState.pool.get(code);
             existingItem.quantity += qty;
             showToast(`商品 ${code} 已存在，數量已增加 ${qty}。`, "success");
         } else {
-            const newItem = { code: code, barcode: 'NA', name: name, quantity: qty };
-            AppState.pool.set(code, newItem);
-            showToast(`已新增商品：${name}`, "success");
+            AppState.pool.set(code, { code: code, barcode: 'NA', name: name, quantity: qty });
+            showToast(`已新增商品：${code} / ${name}`, "success");
         }
         render();
         saveStateToLocalStorage();
@@ -1364,7 +1391,7 @@
             
             binsArray.forEach((bin, index) => {
                 const note = bin.note || ''; 
-                const binName = `共${totalBins}箱-第${index+1}箱`;
+                const binName = `${index + 1}`;
                 if (bin.items.size === 0) { 
                     csvContent += [orderNumber, binName, bin.tracking, note, '', '', '此箱無商品', 0].map(formatCsvField).join(',') + "\n"; 
                 } else { 
