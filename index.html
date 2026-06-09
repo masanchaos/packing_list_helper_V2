@@ -431,7 +431,7 @@
             <input type="number" id="modal-quantity-input" min="1">
             <div class="button-group" style="justify-content: center;">
                 <button id="modal-confirm-btn">確認</button>
-                <button id="modal-cancel-btn" style="background-color: #6c757d;">取消</button>
+                <button id="modal-cancel-btn">取消</button>
             </div>
         </div>
     </div>
@@ -440,7 +440,7 @@
             <h3>發現多個符合項目</h3>
             <p>請選擇您要操作的確切商品：</p>
             <div id="choice-list" style="max-height: 200px; overflow-y: auto; margin: 15px 0;"></div>
-            <button id="choice-cancel-btn" style="background-color: #6c757d; margin-top: 10px; width: 100%;">取消</button>
+            <button id="choice-cancel-btn" style="margin-top: 10px; width: 100%;">取消</button>
         </div>
     </div>
     
@@ -450,18 +450,18 @@
             <label for="new-item-code">商品編號:</label>
             <div style="display:flex; gap:6px; margin-bottom:10px;">
                 <input type="text" id="new-item-code" style="flex:1; min-width:0; margin:0;" placeholder="留空或按右鈕 = NoBarCode">
-                <button id="new-item-code-auto" type="button" style="background-color:#6c757d; white-space:nowrap;">無編號</button>
+                <button id="new-item-code-auto" type="button" style="white-space:nowrap;">無編號</button>
             </div>
             <label for="new-item-name">商品名稱:</label>
             <div style="display:flex; gap:6px; margin-bottom:10px;">
                 <input type="text" id="new-item-name" style="flex:1; min-width:0; margin:0;" placeholder="留空或按右鈕 = NoName">
-                <button id="new-item-name-auto" type="button" style="background-color:#6c757d; white-space:nowrap;">無名稱</button>
+                <button id="new-item-name-auto" type="button" style="white-space:nowrap;">無名稱</button>
             </div>
             <label for="new-item-qty">數量:</label>
             <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 20px;" min="1" value="1">
             <div class="button-group" style="justify-content: center;">
                 <button id="manual-add-confirm-btn">確認新增</button>
-                <button id="manual-add-cancel-btn" style="background-color: #6c757d;">取消</button>
+                <button id="manual-add-cancel-btn">取消</button>
             </div>
         </div>
     </div>
@@ -476,7 +476,7 @@
                 </span>
             </h3>
             <div id="scan-log-list" style="max-height:50vh; overflow-y:auto; margin:10px 0; border:1px solid #eee; border-radius:6px;"></div>
-            <button id="scan-log-close-btn" style="background-color:#6c757d; width:100%;">關閉</button>
+            <button id="scan-log-close-btn" style="width:100%;">關閉</button>
         </div>
     </div>
 
@@ -1561,23 +1561,23 @@
             const binsArray = Array.from(AppState.bins.values());
             const totalBins = binsArray.length;
             
-            let csvContent = "\uFEFF訂單號碼,箱號,運單號,備註,商品編號,國際條碼,品項名稱,數量\n";
+            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
             
             binsArray.forEach((bin, index) => {
                 const note = bin.note || ''; 
                 const binName = `${index + 1}`;
                 if (bin.items.size === 0) { 
-                    csvContent += [orderNumber, binName, bin.tracking, note, '', '', '此箱無商品', 0].map(formatCsvField).join(',') + "\n"; 
+                    csvContent += [orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note].map(formatCsvField).join(',') + "\n"; 
                 } else { 
                     bin.items.forEach(item => { 
-                        csvContent += [orderNumber, binName, bin.tracking, note, item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n"; 
+                        csvContent += [orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note].map(formatCsvField).join(',') + "\n"; 
                     }); 
                 }
             });
             // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += [orderNumber, '未分類', '', '', item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n";
+                csvContent += [orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, ''].map(formatCsvField).join(',') + "\n";
             });
             const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
@@ -1881,7 +1881,20 @@
     }
     setupExports();
     
-    function parseCsvRow(row) { return row.split(',').map(c => c.replace(/^"|"$/g, '')); } 
+    function parseCsvRow(row) {
+        const out = []; let cur = ''; let inQ = false;
+        for (let i = 0; i < row.length; i++) {
+            const ch = row[i];
+            if (inQ) {
+                if (ch === '"') { if (row[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+                else cur += ch;
+            } else if (ch === '"') { inQ = true; }
+            else if (ch === ',') { out.push(cur); cur = ''; }
+            else cur += ch;
+        }
+        out.push(cur);
+        return out.map(c => c.replace(/\r$/, ''));
+    }
     
     // --- CSV 匯入邏輯 (支援多種格式) ---
     function handleCsvImport(event) {
@@ -1895,12 +1908,15 @@
             AppState.pool.clear(); AppState.bins.clear(); binCounter=0; AppState.lockedBinId=null;
             let maxBin=0;
 
-            const header = parseCsvRow(rows[0]);
-            const isNewFormat = header.includes('備註');
+            const header = parseCsvRow(rows[0]).map(h => h.trim());
+            // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
+            const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
+            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1);
+            const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
             
             for(let i=1; i<rows.length; i++){
                 const cols = parseCsvRow(rows[i]); 
-                const binName = cols[1];
+                const binName = cols[cBin];
                 if(!binName) continue;
                 
                 const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
@@ -1915,23 +1931,16 @@
                 let itemName = '';
                 let itemQty = 0;
 
-                if (isNewFormat) {
-                    note = cols[3];
-                    itemCode = cols[4];
-                    itemBarcode = cols[5];
-                    itemName = cols[6];
-                    itemQty = parseInt(cols[7]);
-                } else {
-                    itemCode = cols[3];
-                    itemBarcode = cols[4];
-                    itemName = cols[5];
-                    itemQty = parseInt(cols[6]);
-                }
+                if (cNote >= 0) note = cols[cNote] || '';
+                itemCode = cols[cCode] || '';
+                itemBarcode = cols[cBarcode] || '';
+                itemName = cols[cName] || '';
+                itemQty = parseInt(cols[cQty]) || 0;
 
                 if(!AppState.bins.has(bId)) {
                     AppState.bins.set(bId, { 
                         name: `第 ${bNum} 箱`, 
-                        tracking: cols[2], 
+                        tracking: cols[cTrack] || '',
                         note: note, 
                         items: new Map(), 
                         completed: false 
