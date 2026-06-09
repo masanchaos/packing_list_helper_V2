@@ -239,15 +239,79 @@
         #trash-section.is-empty #trash-caret { visibility: hidden; }
         #trash-section.is-empty .trash-actions { display: none; }
         #trash-section:not(.is-empty) #trash-hint { display: none; }
-        /* 待分箱區物品上的快速丟棄鈕 */
-        .item { position: relative; }
-        .item[data-source="pool"] { padding-right: 34px; }
-        .trash-item-btn {
-            position: absolute; top: 8px; right: 8px; cursor: pointer;
-            font-size: 15px; line-height: 1; padding: 3px 5px; border-radius: 4px;
-            opacity: 0.65; transition: opacity 0.15s, background-color 0.15s;
+        /* 處置區：未分類 / 垃圾桶 分頁 */
+        #trash-title { flex-wrap: wrap; row-gap: 6px; }
+        #trash-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+        .disposal-tabs { display: inline-flex; gap: 4px; vertical-align: middle; }
+        .disposal-tab {
+            background: #e5e5ea; color: #8e8e93; border: none; border-radius: 8px;
+            padding: 3px 9px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 5px;
+            transition: background-color .15s, color .15s;
         }
-        .trash-item-btn:hover { opacity: 1; background-color: #e9ecef; }
+        .disposal-tab .item-count { font-size: 11px; padding: 1px 6px; }
+        .disposal-tab:hover:not(.active) { background: #dcdce1; color: #6c6c70; }
+        .disposal-tab.active { background: #fff; color: #1c1c1e; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+        #trash-title .disposal-tab.active .item-count { background-color: #007aff; }
+        .disposal-tab[data-tab="recycle"].active { color: #ff3b30; }
+        #trash-title .disposal-tab[data-tab="recycle"].active .item-count { background-color: #ff3b30; }
+        /* 依當前分頁顯示對應清單與動作鈕 */
+        #trash-section[data-active="trash"]   #recycle-area,
+        #trash-section[data-active="recycle"] #trash-area { display: none; }
+        #trash-section[data-active="trash"]   .trash-actions[data-for="recycle"],
+        #trash-section[data-active="recycle"] .trash-actions[data-for="trash"] { display: none; }
+        #recycle-area { max-height: 130px; overflow-y: auto; padding: 4px 10px 10px 10px; }
+        #recycle-area .item { background-color: #fff5f5; border-color: #ffd5d2; margin-bottom: 8px; }
+        #recycle-area .item strong { color: #343a40; }
+        #trash-section.collapsed #recycle-area,
+        #trash-section.is-empty #recycle-area { display: none; }
+        .disposal-empty { padding: 10px 14px; font-size: 13px; color: #adb5bd; text-align: center; }
+
+        /* 每個商品的情境操作小鈕（移到未分類 / 垃圾桶 / 還原 / 永久刪除） */
+        .item { position: relative; padding-right: 56px; }
+        .item.acts-3 { padding-right: 82px; }
+        .item-actions {
+            position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+            display: flex; gap: 1px;
+        }
+        .item-act {
+            cursor: pointer; font-size: 14px; line-height: 1; padding: 4px 5px;
+            border-radius: 6px; opacity: 0.55; user-select: none;
+            transition: opacity .15s, background-color .15s;
+        }
+        .item-act:hover { opacity: 1; background-color: #e9ecef; }
+        .item-act.del { color: #ff3b30; }
+        .item-act.del:hover { background-color: #ffe5e3; }
+        /* 手動新增：目的地切換（待分箱 / 鎖定箱）*/
+        .dest-seg { display: flex; gap: 8px; }
+        .dest-opt {
+            flex: 1; background: #e5e5ea; color: #3c3c43; border: none; border-radius: 10px;
+            padding: 9px 8px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+            transition: background-color .15s, color .15s;
+        }
+        .dest-opt.active { background: #007aff; color: #fff; }
+        .dest-opt:disabled { opacity: 0.45; cursor: not-allowed; }
+        /* 自動備份狀態列 */
+        .backup-bar {
+            margin: 10px 20px 0; padding: 7px 10px; border-radius: 10px;
+            font-size: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            background: #fff3cd; border: 1px solid #ffe69c; color: #664d03;
+        }
+        .backup-bar[data-state="active"] { background: #e7f7ec; border-color: #b7e4c7; color: #1b5e34; }
+        .backup-bar[data-state="error"] { background: #fde8e8; border-color: #f5c2c2; color: #842029; }
+        #backup-status { flex: 1; min-width: 120px; line-height: 1.4; }
+        .backup-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+        .backup-bar button {
+            background: #fff; border: 1px solid rgba(0,0,0,.15); color: #007aff;
+            border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+        }
+        .backup-bar #backup-off-btn { color: #ff3b30; }
+        .backup-acts button { display: none; }
+        .backup-bar[data-state="off"] #backup-setup-btn,
+        .backup-bar[data-state="error"] #backup-setup-btn,
+        .backup-bar[data-state="needAuth"] #backup-enable-btn,
+        .backup-bar[data-state="active"] #backup-now-btn,
+        .backup-bar[data-state="active"] #backup-off-btn { display: inline-block; }
 
         /* ============================================================
            iOS 風格主題（覆蓋上方樣式）
@@ -347,6 +411,15 @@
     <div class="container">
         <div id="control-container" class="panel">
             <div class="order-input"><label for="order-number-input">訂單號碼:</label><input type="text" id="order-number-input" placeholder="請在此輸入本次作業的訂單號碼"></div>
+            <div id="backup-bar" class="backup-bar" data-state="off">
+                <span id="backup-status">🛟 自動備份：未啟用（資料只存在本機瀏覽器）</span>
+                <span class="backup-acts">
+                    <button id="backup-setup-btn" type="button">設定備份資料夾</button>
+                    <button id="backup-enable-btn" type="button">啟用自動備份</button>
+                    <button id="backup-now-btn" type="button">立即備份</button>
+                    <button id="backup-off-btn" type="button" title="停止自動備份">停止</button>
+                </span>
+            </div>
             <div class="import-group" id="import-group">
                 <div class="import-head"><span class="import-dot"></span>📥 從 JENJAN 訂單匯入</div>
                 <div class="import-body">
@@ -395,18 +468,29 @@
                 <input type="text" id="search-box" placeholder="🔍 在此輸入關鍵字「篩選」列表..." style="margin: 0 20px 10px 20px; width: calc(100% - 40px);">
             </div>
             <div id="item-list-content"></div>
-            <div id="trash-section" class="is-empty">
+            <div id="trash-section" class="is-empty" data-active="trash">
                 <div class="list-header" id="trash-list-header">
                     <h2 id="trash-title">
-                        <span id="trash-toggle"><span id="trash-caret">▾</span> 未能分類商品區 <span class="item-count" id="trash-count">0</span><span id="trash-hint">— 拖入未能分類的商品</span></span>
-                        <span class="trash-actions">
-                            <button id="restore-trash-btn" type="button" title="把此區商品全部移回待分箱區">全部移回待分箱</button>
-                            <button id="clear-trash-btn" title="永久清空此區">清空此區</button>
+                        <span id="trash-toggle">
+                            <span id="trash-caret">▾</span>
+                            <span class="disposal-tabs">
+                                <button type="button" class="disposal-tab active" data-tab="trash">未分類 <span class="item-count" id="trash-count">0</span></button>
+                                <button type="button" class="disposal-tab" data-tab="recycle">🗑️ 垃圾桶 <span class="item-count" id="recycle-count">0</span></button>
+                            </span>
+                        </span>
+                        <span class="trash-actions" data-for="trash">
+                            <button id="restore-trash-btn" type="button" title="把未分類商品全部移回待分箱區">全部移回待分箱</button>
+                            <button id="clear-trash-btn" title="永久清空未分類區">清空未分類</button>
+                        </span>
+                        <span class="trash-actions" data-for="recycle">
+                            <button id="restore-recycle-btn" type="button" title="把垃圾桶商品全部還原到待分箱區">全部還原</button>
+                            <button id="clear-recycle-btn" title="永久清空垃圾桶">清空垃圾桶</button>
                         </span>
                     </h2>
                 </div>
-                <input type="text" id="trash-search-box" placeholder="🔍 篩選未分類...">
+                <input type="text" id="trash-search-box" placeholder="🔍 篩選...">
                 <div id="trash-area"></div>
+                <div id="recycle-area"></div>
             </div>
         </div>
         <div id="bin-area-container" class="panel">
@@ -458,7 +542,12 @@
                 <button id="new-item-name-auto" type="button" style="white-space:nowrap;">無名稱</button>
             </div>
             <label for="new-item-qty">數量:</label>
-            <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 20px;" min="1" value="1">
+            <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 12px;" min="1" value="1">
+            <label>加到:</label>
+            <div id="manual-add-dest" class="dest-seg" style="margin: 4px 0 20px;">
+                <button type="button" class="dest-opt active" data-dest="pool">待分箱區</button>
+                <button type="button" class="dest-opt" data-dest="locked" id="madest-locked" disabled>🔒 <span id="madest-locked-name">已鎖定的箱子</span></button>
+            </div>
             <div class="button-group" style="justify-content: center;">
                 <button id="manual-add-confirm-btn">確認新增</button>
                 <button id="manual-add-cancel-btn">取消</button>
@@ -539,6 +628,10 @@
     const restoreTrashBtn = document.getElementById('restore-trash-btn');
     const trashSection = document.getElementById('trash-section');
     const trashListHeader = document.getElementById('trash-list-header');
+    const recycleArea = document.getElementById('recycle-area');
+    const recycleCount = document.getElementById('recycle-count');
+    const clearRecycleBtn = document.getElementById('clear-recycle-btn');
+    const restoreRecycleBtn = document.getElementById('restore-recycle-btn');
 
     // --- 手動新增功能 DOM ---
     const manualAddBtn = document.getElementById('manual-add-btn');
@@ -551,7 +644,7 @@
     const newItemCodeAutoBtn = document.getElementById('new-item-code-auto');
     const newItemNameAutoBtn = document.getElementById('new-item-name-auto');
     
-    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), scanLog: [] };
+    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [] };
     let binCounter = 0;
     let currentSearchTerm = '';
     let currentTrashSearchTerm = '';
@@ -639,16 +732,22 @@
             binArea.appendChild(binEl);
         }
 
-        // 渲染未能分類商品區（支援篩選）
-        trashArea.innerHTML = '';
-        const trashKeywords = currentTrashSearchTerm.split(/[,、\s]+/).filter(Boolean);
-        Array.from(AppState.trash.values()).filter(item => {
-            if (trashKeywords.length === 0) return true;
+        // 渲染處置區（未分類 + 垃圾桶，共用篩選關鍵字）
+        const dispKeywords = currentTrashSearchTerm.split(/[,、\s]+/).filter(Boolean);
+        const dispMatch = (item) => {
+            if (dispKeywords.length === 0) return true;
             const itemText = `${item.name} ${item.code} ${item.barcode}`.toLowerCase();
-            return trashKeywords.some(keyword => itemText.includes(keyword));
-        }).forEach(item => {
-            trashArea.appendChild(createItemElement(item, 'trash'));
-        });
+            return dispKeywords.some(keyword => itemText.includes(keyword));
+        };
+        const renderDisposal = (areaEl, map, sourceId, emptyMsg) => {
+            areaEl.innerHTML = '';
+            if (map.size === 0) { areaEl.innerHTML = `<div class="disposal-empty">${emptyMsg}</div>`; return; }
+            const matched = Array.from(map.values()).filter(dispMatch);
+            if (matched.length === 0) { areaEl.innerHTML = '<div class="disposal-empty">沒有符合篩選的商品</div>'; return; }
+            matched.forEach(item => areaEl.appendChild(createItemElement(item, sourceId)));
+        };
+        renderDisposal(trashArea, AppState.trash, 'trash', '沒有未分類商品');
+        renderDisposal(recycleArea, AppState.recycle, 'recycle', '垃圾桶是空的');
 
         updateCounts();
     }
@@ -661,13 +760,27 @@
         itemEl.dataset.code = item.code;
         itemEl.dataset.source = source;
         itemEl.innerHTML = `<strong>${item.name}</strong><div class="details">(編號: ${item.code}, 條碼: ${item.barcode}, 數量: ${item.quantity})</div>`;
-        if (source === 'pool') {
-            const tb = document.createElement('span');
-            tb.className = 'trash-item-btn';
-            tb.title = '移到未能分類商品區';
-            tb.textContent = '🗑️';
-            itemEl.appendChild(tb);
+        // 情境操作鈕：依商品所在區決定可去哪
+        let acts;
+        if (source === 'recycle') {
+            acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['del', '✕', '永久刪除此商品']];
+        } else if (source === 'trash') {
+            acts = [['to-pool', '↩️', '移回待分箱'], ['to-recycle', '🗑️', '移到垃圾桶']];
+        } else { // 待分箱 / 箱子
+            acts = [['to-trash', '📥', '移到未分類'], ['to-recycle', '🗑️', '移到垃圾桶']];
         }
+        const actBox = document.createElement('div');
+        actBox.className = 'item-actions';
+        acts.forEach(([act, glyph, title]) => {
+            const b = document.createElement('span');
+            b.className = 'item-act' + (act === 'del' ? ' del' : '');
+            b.dataset.act = act;
+            b.title = title;
+            b.textContent = glyph;
+            actBox.appendChild(b);
+        });
+        itemEl.appendChild(actBox);
+        if (acts.length >= 3) itemEl.classList.add('acts-3');
         return itemEl;
     }
 
@@ -689,8 +802,10 @@
         binAreaTitle.innerHTML = `分箱工作區 <span class="item-count">${binsTotal}</span>`;
         const trashTotal = Array.from(AppState.trash.values()).reduce((sum, item) => sum + (item.quantity || 0), 0);
         if (trashCount) trashCount.textContent = trashTotal;
+        const recycleTotal = Array.from(AppState.recycle.values()).reduce((sum, item) => sum + (item.quantity || 0), 0);
+        if (recycleCount) recycleCount.textContent = recycleTotal;
         if (trashSection) {
-            const empty = AppState.trash.size === 0;
+            const empty = AppState.trash.size === 0 && AppState.recycle.size === 0;
             trashSection.classList.toggle('is-empty', empty);
             if (empty) trashSection.classList.remove('collapsed');
         }
@@ -699,6 +814,7 @@
     function getItemMap(id) {
         if (id === 'pool') return AppState.pool;
         if (id === 'trash') return AppState.trash;
+        if (id === 'recycle') return AppState.recycle;
         return AppState.bins.get(id)?.items;
     }
     function moveItem(itemCode, sourceId, targetId, quantityToMove, via) {
@@ -875,6 +991,7 @@
             AppState.pool.clear();
             AppState.bins.clear();
             AppState.trash.clear();
+            AppState.recycle.clear();
             AppState.scanLog = [];
             AppState.lockedBinId = null;
             binCounter = 0;
@@ -973,18 +1090,40 @@
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
 
-    // --- 未能分類商品區：一鍵丟棄 / 清空 ---
-    itemListContent.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('trash-item-btn')) return;
-        const itemEl = e.target.closest('.item');
+    // --- 每個商品的情境操作鈕：移到未分類 / 垃圾桶、移回待分箱、永久刪除 ---
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.item-act');
+        if (!btn) return;
+        const itemEl = btn.closest('.item');
         if (!itemEl) return;
         const code = itemEl.dataset.code;
-        const item = AppState.pool.get(code);
+        const source = itemEl.dataset.source;
+        const act = btn.dataset.act;
+        const map = getItemMap(source);
+        const item = map && map.get(code);
         if (!item) return;
-        const name = item.name;
-        const qty = item.quantity;
-        moveItem(code, 'pool', 'trash', qty);
-        showToast(`已將 ${qty} 個 "${name}" 移到未能分類商品區`, 'info');
+        if (act === 'del') {
+            const name = item.name, qty = item.quantity;
+            map.delete(code);
+            logEvent('垃圾桶', `永久刪除「${name}」×${qty}`);
+            render(); saveStateToLocalStorage();
+            showToast(`已永久刪除 "${name}"`, 'info');
+            return;
+        }
+        const target = act === 'to-recycle' ? 'recycle' : act === 'to-trash' ? 'trash' : 'pool';
+        const name = item.name, qty = item.quantity;
+        moveItem(code, source, target, qty);
+        showToast(`已將 ${qty} 個 "${name}" 移到${locLabel(target)}`, 'info');
+    });
+
+    // --- 處置區分頁切換（未分類 / 垃圾桶）---
+    function switchDisposalTab(tab) {
+        if (tab !== 'trash' && tab !== 'recycle') return;
+        trashSection.dataset.active = tab;
+        document.querySelectorAll('.disposal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    }
+    document.querySelectorAll('.disposal-tab').forEach(tabBtn => {
+        tabBtn.addEventListener('click', (e) => { e.stopPropagation(); switchDisposalTab(tabBtn.dataset.tab); });
     });
 
     clearTrashBtn.addEventListener('click', () => {
@@ -1018,6 +1157,37 @@
         }
     });
 
+    // 清空垃圾桶（永久刪除整區）
+    clearRecycleBtn.addEventListener('click', () => {
+        if (AppState.recycle.size === 0) { showToast("垃圾桶是空的。", "info"); return; }
+        if (confirm(`確定要清空垃圾桶嗎？\n此操作無法復原（此區內 ${AppState.recycle.size} 項商品將被永久刪除）。`)) {
+            logEvent('垃圾桶', `清空垃圾桶（${AppState.recycle.size} 項）`);
+            AppState.recycle.clear();
+            currentTrashSearchTerm = ''; trashSearchBox.value = '';
+            render();
+            saveStateToLocalStorage();
+            showToast("垃圾桶已清空。", "success");
+        }
+    });
+
+    // 一鍵把垃圾桶商品全部還原到待分箱區
+    restoreRecycleBtn.addEventListener('click', () => {
+        if (AppState.recycle.size === 0) { showToast("垃圾桶是空的。", "info"); return; }
+        const n = AppState.recycle.size;
+        if (confirm(`確定把垃圾桶的 ${n} 項商品全部還原到待分箱區嗎？`)) {
+            for (const [code, item] of AppState.recycle) {
+                const ex = AppState.pool.get(code);
+                if (ex) { ex.quantity += item.quantity; } else { AppState.pool.set(code, { ...item }); }
+            }
+            AppState.recycle.clear();
+            currentTrashSearchTerm = ''; trashSearchBox.value = '';
+            logEvent('垃圾桶', `垃圾桶 ${n} 項商品全部還原到待分箱區`);
+            render();
+            saveStateToLocalStorage();
+            showToast(`已將 ${n} 項商品還原到待分箱區。`, "success");
+        }
+    });
+
     // 一鍵把待分箱區剩餘商品全部移到未能分類商品區
     dumpPoolBtn.addEventListener('click', () => {
         if (AppState.pool.size === 0) { showToast("待分箱區是空的。", "info"); return; }
@@ -1035,9 +1205,9 @@
         }
     });
 
-    // 點標題列收合 / 展開未分類清單（點「清空」鈕除外）
+    // 點標題列收合 / 展開（分頁標籤與動作鈕自行處理，不觸發收合）
     trashListHeader.addEventListener('click', (e) => {
-        if (e.target.closest('#clear-trash-btn')) return;
+        if (e.target.closest('button')) return;
         if (trashSection.classList.contains('is-empty')) return;
         trashSection.classList.toggle('collapsed');
     });
@@ -1156,6 +1326,7 @@
     function locLabel(id) {
         if (id === 'pool') return '待分箱區';
         if (id === 'trash') return '未能分類商品區';
+        if (id === 'recycle') return '垃圾桶區';
         return AppState.bins.get(id)?.name || id;
     }
     function logEvent(cat, text, undo = null) {
@@ -1164,7 +1335,7 @@
         if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
         if (scanLogModal.style.display === 'flex') renderScanLog();
     }
-    const LOG_CAT_COLOR = { '掃描': '#0d6efd', '移動': '#20c997', '手動': '#28a745', '匯入': '#6610f2', '解析': '#6c757d', '箱子': '#fd7e14', '未分類': '#d63384', '還原': '#e0a800', '錯誤': '#dc3545' };
+    const LOG_CAT_COLOR = { '掃描': '#0d6efd', '移動': '#20c997', '手動': '#28a745', '匯入': '#6610f2', '解析': '#6c757d', '箱子': '#fd7e14', '未分類': '#d63384', '垃圾桶': '#495057', '還原': '#e0a800', '錯誤': '#dc3545' };
     function catBadge(cat) {
         const color = LOG_CAT_COLOR[cat] || '#6c757d';
         return `<span class="log-mode-badge" style="background:${color}">${logEsc(cat || '操作')}</span>`;
@@ -1409,30 +1580,24 @@
                     moveItem(itemInfo.code, itemInfo.source, targetBinId, 1);
                 }
             }
-            // 待分箱區 → 未能分類商品區
-            else if (targetTrashEl && itemInfo.source === 'pool') {
-                const itemData = AppState.pool.get(itemInfo.code);
+            // 任意來源 → 處置區的「當前分頁」（未分類 / 垃圾桶）
+            else if (targetTrashEl && itemInfo.source !== trashSection.dataset.active) {
+                const activeDisp = trashSection.dataset.active; // 'trash' | 'recycle'
+                const srcMap = getItemMap(itemInfo.source);
+                const itemData = srcMap && srcMap.get(itemInfo.code);
                 if (!itemData) return;
-                if (itemData.quantity > 1) {
-                    showQuantityModal(itemData, 'pool', 'trash');
+                if (itemData.quantity > 1 && itemInfo.source === 'pool') {
+                    showQuantityModal(itemData, 'pool', activeDisp);
                 } else {
-                    moveItem(itemInfo.code, 'pool', 'trash', 1);
+                    moveItem(itemInfo.code, itemInfo.source, activeDisp, itemData.quantity);
                 }
             }
-            // 未能分類商品區 → 待分箱區 (還原)
-            else if (targetPoolEl && itemInfo.source === 'trash') {
-                const itemData = AppState.trash.get(itemInfo.code);
+            // 未分類 / 垃圾桶 / 箱子 → 待分箱區（還原 / 取出）
+            else if (targetPoolEl && itemInfo.source !== 'pool') {
+                const srcMap = getItemMap(itemInfo.source);
+                const itemData = srcMap && srcMap.get(itemInfo.code);
                 if (!itemData) return;
-                moveItem(itemInfo.code, 'trash', 'pool', itemData.quantity);
-            }
-            // 箱子 → 待分箱區
-            else if (targetPoolEl && itemInfo.source !== 'pool' && itemInfo.source !== 'trash') {
-                const sourceBinId = itemInfo.source;
-                const itemCode = itemInfo.code;
-                const sourceBinMap = AppState.bins.get(sourceBinId)?.items;
-                if (!sourceBinMap || !sourceBinMap.has(itemCode)) return;
-                const itemData = sourceBinMap.get(itemCode);
-                moveItem(itemData.code, sourceBinId, 'pool', itemData.quantity);
+                moveItem(itemInfo.code, itemInfo.source, 'pool', itemData.quantity);
             }
         } catch (err) { console.error("拖曳資料解析失敗:", err); }
     });
@@ -1461,22 +1626,45 @@
     function nextNoBarCode() {
         let max = 0;
         const scan = (m) => { for (const c of m.keys()) { const mt = /^NoBarCode(\d+)$/i.exec(c); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
-        scan(AppState.pool); scan(AppState.trash);
+        scan(AppState.pool); scan(AppState.trash); scan(AppState.recycle);
         for (const bin of AppState.bins.values()) scan(bin.items);
         return 'NoBarCode' + (max + 1);
     }
     function nextNoName() {
         let max = 0;
         const scan = (m) => { for (const it of m.values()) { const mt = /^NoName(\d+)$/i.exec(it.name || ''); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
-        scan(AppState.pool); scan(AppState.trash);
+        scan(AppState.pool); scan(AppState.trash); scan(AppState.recycle);
         for (const bin of AppState.bins.values()) scan(bin.items);
         return 'NoName' + (max + 1);
     }
 
+    function setupManualAddDest() {
+        const lockedBtn = document.getElementById('madest-locked');
+        const lockedName = document.getElementById('madest-locked-name');
+        const lockedBin = AppState.lockedBinId && AppState.bins.get(AppState.lockedBinId);
+        if (lockedBin) {
+            lockedBtn.disabled = false;
+            lockedName.textContent = lockedBin.name;
+            lockedBtn.title = `直接加到 ${lockedBin.name}`;
+        } else {
+            lockedBtn.disabled = true;
+            lockedName.textContent = '已鎖定的箱子（尚未鎖定）';
+            lockedBtn.title = '目前沒有鎖定的箱子';
+        }
+        document.querySelectorAll('#manual-add-dest .dest-opt').forEach(b => b.classList.toggle('active', b.dataset.dest === 'pool'));
+    }
+    document.querySelectorAll('#manual-add-dest .dest-opt').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            document.querySelectorAll('#manual-add-dest .dest-opt').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
     manualAddBtn.addEventListener('click', () => {
         newItemCodeInput.value = '';
         newItemNameInput.value = '';
         newItemQtyInput.value = '1';
+        setupManualAddDest();
         manualAddModal.style.display = 'flex';
         newItemCodeInput.focus();
     });
@@ -1491,15 +1679,22 @@
         // 規則：商品一定要有編號與名稱；留空就自動給 NoBarCode/NoName（也可自行填寫）
         if (!code) code = nextNoBarCode();
         if (!name) name = nextNoName();
-        if (AppState.pool.has(code)) {
-            const existingItem = AppState.pool.get(code);
-            existingItem.quantity += qty;
-            showToast(`商品 ${code} 已存在，數量已增加 ${qty}。`, "success");
+        // 目的地：待分箱區 或 已鎖定的箱子
+        const destBtn = document.querySelector('#manual-add-dest .dest-opt.active');
+        const wantLocked = destBtn && destBtn.dataset.dest === 'locked';
+        const lockedBin = AppState.lockedBinId && AppState.bins.get(AppState.lockedBinId);
+        const useLocked = wantLocked && lockedBin;
+        const targetMap = useLocked ? lockedBin.items : AppState.pool;
+        const targetLabel = useLocked ? lockedBin.name : '待分箱區';
+        const loc = useLocked ? AppState.lockedBinId : 'pool';
+        if (targetMap.has(code)) {
+            targetMap.get(code).quantity += qty;
+            showToast(`${targetLabel}已有商品 ${code}，數量增加 ${qty}。`, "success");
         } else {
-            AppState.pool.set(code, { code: code, barcode: 'NA', name: name, quantity: qty });
-            showToast(`已新增商品：${code} / ${name}`, "success");
+            targetMap.set(code, { code: code, barcode: 'NA', name: name, quantity: qty });
+            showToast(`已新增到${targetLabel}：${code} / ${name}`, "success");
         }
-        logEvent('手動', `手動新增「${name}」(${code}) ×${qty}`, { kind: 'add', code: code, qty: qty, loc: 'pool' });
+        logEvent('手動', `手動新增「${name}」(${code}) ×${qty} → ${targetLabel}`, { kind: 'add', code: code, qty: qty, loc: loc });
         render();
         saveStateToLocalStorage();
         manualAddModal.style.display = 'none';
@@ -1555,11 +1750,10 @@
             const orderNumber = orderNumberInput.value.trim() || 'NoOrder';
             return `${orderNumber}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}_packing_list${extension}`;
         }
-        function exportCSV() {
-            if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
+        // 產生匯出用 CSV 字串（手動匯出與自動備份共用；垃圾桶不輸出）
+        function buildExportCSV() {
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const binsArray = Array.from(AppState.bins.values());
-            const totalBins = binsArray.length;
             
             let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
@@ -1579,7 +1773,12 @@
             AppState.trash.forEach(item => {
                 csvContent += [orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, ''].map(formatCsvField).join(',') + "\n";
             });
-            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+            return csvContent;
+        }
+        window.__plhBuildCSV = buildExportCSV; // 供外層「自動備份」取用同一份 CSV 產生器
+        function exportCSV() {
+            if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
+            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([buildExportCSV()], { type: 'text/csv;charset=utf-8;' }));
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
         
@@ -1966,15 +2165,106 @@
         const toast = document.createElement('div'); toast.className = `toast-notification ${type}`; toast.textContent = message;
         document.body.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
+    // ===== 自動備份到本機資料夾（File System Access）=====
+    let backupDirHandle = null, backupActive = false, backupTimer = null, backupLastError = '';
+    const BK_DB = 'plh_backup', BK_STORE = 'kv', BK_KEY = 'dirHandle';
+    function backupSupported() { return 'showDirectoryPicker' in window; }
+    function bkIdbOpen() {
+        return new Promise((res, rej) => {
+            const r = indexedDB.open(BK_DB, 1);
+            r.onupgradeneeded = () => { r.result.createObjectStore(BK_STORE); };
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+        });
+    }
+    async function bkIdbSet(v) { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).put(v, BK_KEY); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function bkIdbGet() { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readonly'); const q = tx.objectStore(BK_STORE).get(BK_KEY); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
+    async function bkIdbClear() { const db = await bkIdbOpen(); return new Promise((res) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).delete(BK_KEY); tx.oncomplete = () => res(); }); }
+    function bkTodayStamp() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    function bkTimeStr(d) { return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+    function updateBackupUI(state, info) {
+        const bar = document.getElementById('backup-bar'); if (!bar) return;
+        bar.dataset.state = state;
+        const el = document.getElementById('backup-status');
+        const name = backupDirHandle ? backupDirHandle.name : '';
+        if (state === 'active') el.textContent = `🛟 自動備份中 → ${name}` + (info && info.time ? `（最後備份 ${bkTimeStr(info.time)}）` : '');
+        else if (state === 'needAuth') el.textContent = `🛟 已設定備份資料夾（${name}），請點右側「啟用自動備份」`;
+        else if (state === 'error') el.textContent = `⚠️ 自動備份失敗：${backupLastError}（請重新設定）`;
+        else el.textContent = '🛟 自動備份：未啟用（資料只存在本機瀏覽器，建議設定）';
+    }
+    async function bkEnsurePerm(handle, request) {
+        const opts = { mode: 'readwrite' };
+        if ((await handle.queryPermission(opts)) === 'granted') return true;
+        if (request && (await handle.requestPermission(opts)) === 'granted') return true;
+        return false;
+    }
+    async function writeBackupNow() {
+        if (!backupActive || !backupDirHandle) return;
+        if (AppState.bins.size === 0 && AppState.trash.size === 0) return; // 空資料不覆寫，避免誤清把好備份蓋掉
+        if (typeof window.__plhBuildCSV !== 'function') return;
+        try {
+            const blob = new Blob([window.__plhBuildCSV()], { type: 'text/csv;charset=utf-8;' });
+            for (const fname of ['packing_latest.csv', `packing_${bkTodayStamp()}.csv`]) {
+                const fh = await backupDirHandle.getFileHandle(fname, { create: true });
+                const w = await fh.createWritable(); await w.write(blob); await w.close();
+            }
+            backupLastError = '';
+            updateBackupUI('active', { time: new Date() });
+        } catch (e) {
+            backupLastError = (e && e.message) || String(e);
+            backupActive = false;
+            updateBackupUI('error');
+        }
+    }
+    function scheduleBackup() { if (!backupActive) return; clearTimeout(backupTimer); backupTimer = setTimeout(writeBackupNow, 4000); }
+    async function pickBackupFolder() {
+        if (!backupSupported()) { showToast('此瀏覽器不支援資料夾自動備份，請改用 Chrome / Edge。', 'error'); return; }
+        try {
+            const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'plh-backup' });
+            if (!(await bkEnsurePerm(handle, true))) { showToast('未取得資料夾寫入權限。', 'error'); return; }
+            backupDirHandle = handle; backupActive = true;
+            await bkIdbSet(handle);
+            await writeBackupNow();
+            if (backupActive) { showToast(`已啟用自動備份 → ${handle.name}`, 'success'); updateBackupUI('active', { time: new Date() }); }
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;
+            showToast('設定備份資料夾失敗：' + ((e && e.message) || e), 'error');
+        }
+    }
+    async function reactivateBackup() {
+        try {
+            if (!backupDirHandle) backupDirHandle = await bkIdbGet();
+            if (!backupDirHandle) { updateBackupUI('off'); return; }
+            if (!(await bkEnsurePerm(backupDirHandle, true))) { showToast('未取得權限。', 'error'); updateBackupUI('needAuth'); return; }
+            backupActive = true;
+            await writeBackupNow();
+            if (backupActive) { showToast(`自動備份已啟用 → ${backupDirHandle.name}`, 'success'); updateBackupUI('active', { time: new Date() }); }
+        } catch (e) { showToast('啟用失敗：' + ((e && e.message) || e), 'error'); }
+    }
+    function disableBackup() {
+        backupActive = false; backupDirHandle = null; clearTimeout(backupTimer);
+        bkIdbClear();
+        updateBackupUI('off');
+        showToast('已停止自動備份。', 'info');
+    }
+    async function initBackup() {
+        const bar = document.getElementById('backup-bar');
+        if (!backupSupported()) { if (bar) bar.style.display = 'none'; return; }
+        try { const stored = await bkIdbGet(); if (stored) { backupDirHandle = stored; updateBackupUI('needAuth'); } else updateBackupUI('off'); }
+        catch (e) { updateBackupUI('off'); }
+    }
+
     function saveStateToLocalStorage() {
         localStorage.setItem('binningToolState_v72', JSON.stringify({
             pool: Array.from(AppState.pool.entries()),
             bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
             trash: Array.from(AppState.trash.entries()),
+            recycle: Array.from(AppState.recycle.entries()),
             scanLog: AppState.scanLog,
             scanMode,
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
         }));
+        scheduleBackup();
     }
     function loadStateFromLocalStorage() {
         const s = localStorage.getItem('binningToolState_v72');
@@ -1983,6 +2273,7 @@
         AppState.pool = new Map(d.pool);
         AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}]));
         AppState.trash = new Map(d.trash || []);
+        AppState.recycle = new Map(d.recycle || []);
         AppState.scanLog = d.scanLog || [];
         binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
         if (d.scanMode && SCAN_MODE_INFO[d.scanMode]) { scanMode = d.scanMode; applyScanMode(); }
@@ -1990,6 +2281,13 @@
     }
     orderNumberInput.addEventListener('input', saveStateToLocalStorage);
     document.addEventListener('DOMContentLoaded', loadStateFromLocalStorage);
+    // 自動備份：按鈕事件 + 啟動偵測 + 離開頁面前再存一次
+    document.getElementById('backup-setup-btn').addEventListener('click', pickBackupFolder);
+    document.getElementById('backup-enable-btn').addEventListener('click', reactivateBackup);
+    document.getElementById('backup-now-btn').addEventListener('click', () => { if (backupActive) writeBackupNow(); });
+    document.getElementById('backup-off-btn').addEventListener('click', disableBackup);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) writeBackupNow(); });
+    initBackup();
 </script>
 </body>
 </html>
