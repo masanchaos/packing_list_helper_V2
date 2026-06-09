@@ -287,7 +287,7 @@
                 <label for="scan-input">📦 商品掃描專用 (Enter 確認):</label>
                 <button id="scan-mode-btn" type="button">掃描模式：② 新增到待分箱</button>
                 <input type="text" id="scan-input" placeholder="掃描條碼後按 Enter" autocomplete="off">
-                <button id="scan-log-btn" type="button">📜 掃描紀錄</button>
+                <button id="scan-log-btn" type="button">📜 操作紀錄</button>
             </div>
 
             <div class="command-group"><label for="command-input">快速指令:</label><div style="display:flex; gap: 10px;">
@@ -375,7 +375,7 @@
     <div id="scan-log-modal" class="modal-overlay">
         <div class="modal-content" style="width: 560px; max-width: 92vw; text-align: left;">
             <h3 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                <span>📜 掃描紀錄 <span class="item-count" id="scan-log-count">0</span></span>
+                <span>📜 操作紀錄 <span class="item-count" id="scan-log-count">0</span></span>
                 <span style="display:flex; gap:6px;">
                     <button id="scan-log-export-btn" style="background-color:#28a745; padding:5px 10px; font-size:13px;">匯出 CSV</button>
                     <button id="scan-log-clear-btn" style="background-color:#dc3545; padding:5px 10px; font-size:13px;">清空紀錄</button>
@@ -606,11 +606,12 @@
         if (id === 'trash') return AppState.trash;
         return AppState.bins.get(id)?.items;
     }
-    function moveItem(itemCode, sourceId, targetId, quantityToMove) {
+    function moveItem(itemCode, sourceId, targetId, quantityToMove, via) {
         const sourceMap = getItemMap(sourceId);
         const targetMap = getItemMap(targetId);
         if (!sourceMap || !targetMap || !sourceMap.has(itemCode)) { return; }
         const itemToMove = sourceMap.get(itemCode);
+        const movedName = itemToMove.name;
         const existingTargetItem = targetMap.get(itemCode);
         if (existingTargetItem) {
             existingTargetItem.quantity += quantityToMove;
@@ -623,6 +624,7 @@
         }
         render();
         saveStateToLocalStorage();
+        logEvent(via || '移動', `${quantityToMove}×「${movedName}」 ${locLabel(sourceId)} → ${locLabel(targetId)}`, { kind: 'move', code: itemCode, from: sourceId, to: targetId, qty: quantityToMove });
     }
     
     function returnItemsToPool(items) {
@@ -808,6 +810,7 @@
         }
         render();
         saveStateToLocalStorage();
+        logEvent('箱子', `快速生成 ${num} 個箱子`);
         showToast(`已成功新增 ${num} 個箱子。`, 'success');
     }
 
@@ -857,6 +860,7 @@
             if(currentMode === 'inbound') modeName = '入倉';
             if(currentMode === 'check') modeName = '檢查';
             showToast(`資料解析成功！(模式：${modeName})`, 'success');
+            logEvent('解析', `解析${modeName}資料：${parsedMap.size} 項商品`);
             saveStateToLocalStorage();
         } else {
             showToast("解析失敗！請檢查資料格式是否符合當前模式。", 'error');
@@ -867,6 +871,7 @@
         binCounter++;
         const binId = `bin-${binCounter}`;
         AppState.bins.set(binId, { name: `第 ${binCounter} 箱`, tracking: '', items: new Map(), completed: false, note: '' });
+        logEvent('箱子', `新增 第 ${binCounter} 箱`);
         render();
         saveStateToLocalStorage();
     });
@@ -890,6 +895,7 @@
     clearTrashBtn.addEventListener('click', () => {
         if (AppState.trash.size === 0) { showToast("垃圾桶區是空的。", "info"); return; }
         if (confirm("確定要清空垃圾桶區嗎？\n此操作無法復原（垃圾桶內的物品將被永久移除，不會回到待分箱區）。")) {
+            logEvent('垃圾桶', `清空垃圾桶（${AppState.trash.size} 項）`);
             AppState.trash.clear();
             trashSearchBox.value = '';
             currentTrashSearchTerm = '';
@@ -909,6 +915,7 @@
                 if (ex) { ex.quantity += item.quantity; } else { AppState.trash.set(code, { ...item }); }
             }
             AppState.pool.clear();
+            logEvent('垃圾桶', `待分箱區 ${lines} 項商品全部移到垃圾桶`);
             render();
             saveStateToLocalStorage();
             showToast(`已將待分箱區 ${lines} 項商品全部移到垃圾桶區。`, "success");
@@ -974,19 +981,19 @@
             if (existingItem) {
                 existingItem.quantity += 1;
                 showToast(`商品 "${existingItem.name}" 數量 +1 (目前: ${existingItem.quantity})`, 'success');
-                logScan({ mode: scanMode, code: codeToScan, name: existingItem.name, action: 'pool_add', itemCode: existingItem.code, loc: 'pool', qty: 1, result: `待分箱 +1 → ${existingItem.quantity}` });
+                logEvent('掃描', `掃描 ${codeToScan}：待分箱 +1 → ${existingItem.quantity}`, { kind: 'add', code: existingItem.code, qty: 1, loc: 'pool' });
             } else {
                 const newItem = { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 };
                 AppState.pool.set(codeToScan, newItem);
                 showToast(`已新增商品：${newItem.name}`, 'success');
-                logScan({ mode: scanMode, code: codeToScan, name: newItem.name, action: 'pool_add', itemCode: codeToScan, loc: 'pool', qty: 1, result: '新增到待分箱 (1)' });
+                logEvent('掃描', `掃描 ${codeToScan}：新增到待分箱`, { kind: 'add', code: codeToScan, qty: 1, loc: 'pool' });
             }
             render();
         } else {
             // ① 與 ③ 都需要先鎖定一個箱子
             if (!AppState.lockedBinId || !AppState.bins.has(AppState.lockedBinId)) {
                 showToast('請先鎖定一個箱子（按箱子上的 🔒），或切換到②新增模式', 'error');
-                logScan({ mode: scanMode, code: codeToScan, name: '', action: 'error', itemCode: '', loc: '', qty: 0, result: '❌ 未鎖定箱子' });
+                logEvent('錯誤', `掃描 ${codeToScan}：❌ 未鎖定箱子`);
                 saveStateToLocalStorage();
                 if (scanLogModal.style.display === 'flex') renderScanLog();
                 scanInput.value = '';
@@ -1000,12 +1007,11 @@
                     item => item.code === codeToScan || item.barcode === codeToScan
                 );
                 if (matchedItem) {
-                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1);
+                    moveItem(matchedItem.code, 'pool', AppState.lockedBinId, 1, '掃描');
                     showToast(`已移動 1 個 "${matchedItem.name}" 至 ${lockedBin.name}`, 'success');
-                    logScan({ mode: scanMode, code: codeToScan, name: matchedItem.name, action: 'into_box', itemCode: matchedItem.code, loc: AppState.lockedBinId, qty: 1, result: `移入 ${lockedBin.name}` });
                 } else {
                     showToast(`在待分箱區找不到商品 (代碼: ${codeToScan})`, 'error');
-                    logScan({ mode: scanMode, code: codeToScan, name: '', action: 'error', itemCode: '', loc: '', qty: 0, result: '❌ 待分箱找不到此商品' });
+                    logEvent('錯誤', `掃描 ${codeToScan}：❌ 待分箱找不到此商品`);
                 }
             } else if (scanMode === 'addIntoBox') {
                 // ③ 鎖定時新增並直接入箱：一律直接在鎖定箱內 +1（不動待分箱區）
@@ -1017,11 +1023,11 @@
                 if (binItem) {
                     binItem.quantity += 1;
                     showToast(`"${binItem.name}" 在 ${lockedBin.name} 內 +1 (目前: ${binItem.quantity})`, 'success');
-                    logScan({ mode: scanMode, code: codeToScan, name: binItem.name, action: 'box_add', itemCode: binItem.code, loc: AppState.lockedBinId, qty: 1, result: `${lockedBin.name} +1 → ${binItem.quantity}` });
+                    logEvent('掃描', `掃描 ${codeToScan}：${lockedBin.name} +1 → ${binItem.quantity}`, { kind: 'add', code: binItem.code, qty: 1, loc: AppState.lockedBinId });
                 } else {
                     binItems.set(codeToScan, { code: codeToScan, barcode: 'NA', name: `掃描新增商品 (${codeToScan})`, quantity: 1 });
                     showToast(`已新增並放入 ${lockedBin.name}：${codeToScan}`, 'success');
-                    logScan({ mode: scanMode, code: codeToScan, name: `掃描新增商品 (${codeToScan})`, action: 'box_add', itemCode: codeToScan, loc: AppState.lockedBinId, qty: 1, result: `新增並放入 ${lockedBin.name} (1)` });
+                    logEvent('掃描', `掃描 ${codeToScan}：新增並放入 ${lockedBin.name}`, { kind: 'add', code: codeToScan, qty: 1, loc: AppState.lockedBinId });
                 }
                 render();
             }
@@ -1031,16 +1037,24 @@
         scanInput.value = '';
     });
 
-    // --- 掃描紀錄（log）：記錄三種掃描、可逐筆復原、可匯出 CSV ---
+    // --- 操作紀錄（log）：記錄所有操作，可匯出，部分可逐筆復原 ---
     const logEsc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    function logScan(entry) {
-        AppState.scanLog.push({ ts: Date.now(), undone: false, ...entry });
-        if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
+    let suppressLog = false;
+    function locLabel(id) {
+        if (id === 'pool') return '待分箱區';
+        if (id === 'trash') return '垃圾桶區';
+        return AppState.bins.get(id)?.name || id;
     }
-    function scanModeBadge(mode) {
-        const map = { intoBox: ['①', '#0d6efd'], addPool: ['②', '#6c757d'], addIntoBox: ['③', '#fd7e14'] };
-        const [sym, color] = map[mode] || ['?', '#6c757d'];
-        return `<span class="log-mode-badge" style="background:${color}">${sym}</span>`;
+    function logEvent(cat, text, undo = null) {
+        if (suppressLog) return;
+        AppState.scanLog.push({ ts: Date.now(), cat, text, undo, undone: false });
+        if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
+        if (scanLogModal.style.display === 'flex') renderScanLog();
+    }
+    const LOG_CAT_COLOR = { '掃描': '#0d6efd', '移動': '#20c997', '手動': '#28a745', '匯入': '#6610f2', '解析': '#6c757d', '箱子': '#fd7e14', '垃圾桶': '#d63384', '還原': '#e0a800', '錯誤': '#dc3545' };
+    function catBadge(cat) {
+        const color = LOG_CAT_COLOR[cat] || '#6c757d';
+        return `<span class="log-mode-badge" style="background:${color}">${logEsc(cat || '操作')}</span>`;
     }
     function renderScanLog() {
         const list = document.getElementById('scan-log-list');
@@ -1049,41 +1063,42 @@
         let html = '';
         for (let i = AppState.scanLog.length - 1; i >= 0; i--) {
             const en = AppState.scanLog[i];
+            const cat = en.cat || (en.mode ? '掃描' : '操作');
+            const text = (en.text != null) ? en.text : (en.result || '');
+            const isError = cat === '錯誤' || (!en.undo && en.action === 'error');
             const d = new Date(en.ts);
             const tstr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
             let right = '';
-            if (en.action === 'error') right = '';
-            else if (en.undone) right = '<span class="log-undone">已復原</span>';
-            else right = `<button class="log-undo-btn" data-idx="${i}">復原</button>`;
-            html += `<div class="log-row ${en.undone ? 'is-undone' : ''} ${en.action === 'error' ? 'is-error' : ''}">`
-                + `<span class="log-time">${tstr}</span>${scanModeBadge(en.mode)}`
-                + `<span class="log-main"><span class="log-code">${logEsc(en.code)}</span>`
-                + `${en.name ? ` <span class="log-name">${logEsc(en.name)}</span>` : ''}`
-                + `<span class="log-result">${logEsc(en.result)}</span></span>${right}</div>`;
+            if (en.undone) right = '<span class="log-undone">已復原</span>';
+            else if (en.undo) right = `<button class="log-undo-btn" data-idx="${i}">復原</button>`;
+            html += `<div class="log-row ${en.undone ? 'is-undone' : ''} ${isError ? 'is-error' : ''}">`
+                + `<span class="log-time">${tstr}</span>${catBadge(cat)}`
+                + `<span class="log-main"><span class="log-result">${logEsc(text)}</span></span>${right}</div>`;
         }
         list.innerHTML = html;
     }
     function undoScan(idx) {
         const en = AppState.scanLog[idx];
-        if (!en || en.undone || en.action === 'error') return;
+        if (!en || en.undone || !en.undo) return;
+        const u = en.undo;
         let ok = false, reason = '';
-        if (en.action === 'pool_add') {
-            const it = AppState.pool.get(en.itemCode);
-            if (it && it.quantity >= 1) { it.quantity -= 1; if (it.quantity <= 0) AppState.pool.delete(en.itemCode); ok = true; }
-            else reason = '該商品已不在待分箱區';
-        } else if (en.action === 'box_add') {
-            const bin = AppState.bins.get(en.loc);
-            const it = bin && bin.items.get(en.itemCode);
-            if (it && it.quantity >= 1) { it.quantity -= 1; if (it.quantity <= 0) bin.items.delete(en.itemCode); ok = true; }
-            else reason = '該箱或商品已變動';
-        } else if (en.action === 'into_box') {
-            const bin = AppState.bins.get(en.loc);
-            if (bin && bin.items.has(en.itemCode)) { moveItem(en.itemCode, en.loc, 'pool', 1); ok = true; }
-            else reason = '該箱或商品已變動，無法移回';
-        }
+        suppressLog = true;
+        try {
+            if (u.kind === 'move') {
+                const srcMap = getItemMap(u.to);
+                if (srcMap && srcMap.has(u.code) && srcMap.get(u.code).quantity >= u.qty) { moveItem(u.code, u.to, u.from, u.qty); ok = true; }
+                else reason = '商品已不在原位置';
+            } else if (u.kind === 'add') {
+                const map = getItemMap(u.loc);
+                const it = map && map.get(u.code);
+                if (it && it.quantity > u.qty) { it.quantity -= u.qty; ok = true; }
+                else if (it) { map.delete(u.code); ok = true; }
+                else reason = '該商品已不在原位置';
+            }
+        } finally { suppressLog = false; }
         if (ok) {
             en.undone = true;
-            showToast(`已復原：${en.code}（${en.result}）`, 'success');
+            showToast(`已復原：${en.text}`, 'success');
             render();
             saveStateToLocalStorage();
             renderScanLog();
@@ -1092,29 +1107,29 @@
         }
     }
     function exportScanLog() {
-        if (AppState.scanLog.length === 0) { showToast('沒有掃描紀錄可匯出', 'error'); return; }
-        const modeName = { intoBox: '①入箱', addPool: '②新增到待分箱', addIntoBox: '③新增並入箱' };
+        if (AppState.scanLog.length === 0) { showToast('沒有操作紀錄可匯出', 'error'); return; }
         const f = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; };
-        let csv = '﻿時間,模式,掃描條碼,商品編號,商品名稱,結果,數量,位置,狀態\n';
+        let csv = '﻿時間,類別,操作,狀態\n';
         AppState.scanLog.forEach(en => {
             const tstr = new Date(en.ts).toLocaleString('zh-TW', { hour12: false });
-            const locName = en.loc === 'pool' ? '待分箱區' : (en.loc ? (AppState.bins.get(en.loc)?.name || en.loc) : '');
-            csv += [tstr, modeName[en.mode] || en.mode, en.code, en.itemCode || '', en.name || '', en.result, en.qty, locName, en.undone ? '已復原' : '有效'].map(f).join(',') + '\n';
+            const cat = en.cat || (en.mode ? '掃描' : '操作');
+            const text = (en.text != null) ? en.text : (en.result || '');
+            csv += [tstr, cat, text, en.undone ? '已復原' : '有效'].map(f).join(',') + '\n';
         });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
         const now = new Date();
         const order = orderNumberInput.value.trim() || 'NoOrder';
-        link.download = `${order}_掃描紀錄_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.csv`;
+        link.download = `${order}_操作紀錄_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.csv`;
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
     function clearScanLog() {
         if (AppState.scanLog.length === 0) { showToast('紀錄已是空的', 'info'); return; }
-        if (confirm('確定清空掃描紀錄嗎？\n（只清除紀錄，不影響待分箱區與箱子的內容）')) {
+        if (confirm('確定清空操作紀錄嗎？\n（只清除紀錄，不影響待分箱區與箱子的內容）')) {
             AppState.scanLog = [];
             saveStateToLocalStorage();
             renderScanLog();
-            showToast('掃描紀錄已清空', 'success');
+            showToast('操作紀錄已清空', 'success');
         }
     }
     scanLogBtn.addEventListener('click', () => { renderScanLog(); scanLogModal.style.display = 'flex'; });
@@ -1173,6 +1188,7 @@
             render();
             saveStateToLocalStorage();
             const label = type === 'entry' ? '入倉單' : '出貨單';
+            logEvent('匯入', `${label} ${sn}：匯入 ${lines} 項 / ${units} 件`);
             setImportStatus(`已匯入 ${lines} 項 / ${units} 件（${label} ${sn}）`, 'ok');
             showToast(`已從${label} ${sn} 匯入 ${lines} 項、${units} 件`, 'success');
             importSn.value = '';
@@ -1201,6 +1217,7 @@
         if (e.target.classList.contains('delete-bin-btn')) {
             if (confirm(`確定要刪除「${binData.name}」嗎？\n(箱內所有商品將會被移回待分箱區)`)) {
                 if (binData.items.size > 0) { returnItemsToPool(Array.from(binData.items.values())); }
+                logEvent('箱子', `刪除 ${binData.name}（內容退回待分箱區）`);
                 if (AppState.lockedBinId === binId) { AppState.lockedBinId = null; }
                 AppState.bins.delete(binId);
                 reIndexBins();
@@ -1216,10 +1233,12 @@
                 showToast(`${binData.name} 已鎖定！掃描前請把上方掃描模式切到①入箱或③新增並入箱。`, 'success');
                 scanInput.focus();
             }
+            logEvent('箱子', (AppState.lockedBinId === binId ? '鎖定 ' : '解鎖 ') + binData.name);
             render();
             saveStateToLocalStorage();
         } else if (e.target.classList.contains('complete-bin-btn')) {
             binData.completed = !binData.completed;
+            logEvent('箱子', (binData.completed ? '標示完成 ' : '取消完成 ') + binData.name);
             showToast(binData.completed ? `${binData.name} 已標示為完成` : `${binData.name} 已取消完成標示`, 'info');
             render();
             saveStateToLocalStorage();
@@ -1367,6 +1386,7 @@
             AppState.pool.set(code, { code: code, barcode: 'NA', name: name, quantity: qty });
             showToast(`已新增商品：${code} / ${name}`, "success");
         }
+        logEvent('手動', `手動新增「${name}」(${code}) ×${qty}`, { kind: 'add', code: code, qty: qty, loc: 'pool' });
         render();
         saveStateToLocalStorage();
         manualAddModal.style.display = 'none';
@@ -1812,6 +1832,7 @@
                 }
             }
             binCounter=maxBin;
+            logEvent('還原', '還原 CSV 備份');
             render(); saveStateToLocalStorage(); showToast("還原成功", "success");
         };
         reader.readAsText(file);
