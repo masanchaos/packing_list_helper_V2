@@ -233,7 +233,10 @@
         #trash-area .item strong { color: #b02a6b; }
         /* 收合 或 空的時候：只剩一條 bar */
         #trash-section.collapsed #trash-area,
-        #trash-section.is-empty #trash-area { display: none; }
+        #trash-section.collapsed #trash-search-box,
+        #trash-section.is-empty #trash-area,
+        #trash-section.is-empty #trash-search-box { display: none; }
+        #trash-search-box { width: calc(100% - 20px); box-sizing: border-box; margin: 4px 10px 6px 10px; padding: 6px 10px; border: 1px solid #e0a8c4; border-radius: 4px; font-size: 14px; }
         #trash-section.collapsed #trash-caret { transform: rotate(-90deg); }
         #trash-section.is-empty #trash-caret { visibility: hidden; }
         #trash-section.is-empty #clear-trash-btn { display: none; }
@@ -308,6 +311,7 @@
                         <button id="clear-trash-btn" title="永久清空垃圾桶區">清空垃圾桶</button>
                     </h2>
                 </div>
+                <input type="text" id="trash-search-box" placeholder="🔍 篩選垃圾桶...">
                 <div id="trash-area"></div>
             </div>
         </div>
@@ -435,6 +439,7 @@
     const choiceCancelBtn = document.getElementById('choice-cancel-btn');
     const importCsvInput = document.getElementById('import-csv-input');
     const trashArea = document.getElementById('trash-area');
+    const trashSearchBox = document.getElementById('trash-search-box');
     const trashCount = document.getElementById('trash-count');
     const clearTrashBtn = document.getElementById('clear-trash-btn');
     const trashSection = document.getElementById('trash-section');
@@ -454,6 +459,7 @@
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), scanLog: [] };
     let binCounter = 0;
     let currentSearchTerm = '';
+    let currentTrashSearchTerm = '';
     let modalCallback = null;
     let currentMode = 'outbound';
     let scanMode = 'addPool'; // 掃描模式：intoBox=鎖定時入箱 / addPool=未鎖定時新增 / addIntoBox=鎖定時新增並直接入箱
@@ -538,9 +544,14 @@
             binArea.appendChild(binEl);
         }
 
-        // 渲染垃圾桶區
+        // 渲染垃圾桶區（支援篩選）
         trashArea.innerHTML = '';
-        Array.from(AppState.trash.values()).forEach(item => {
+        const trashKeywords = currentTrashSearchTerm.split(/[,、\s]+/).filter(Boolean);
+        Array.from(AppState.trash.values()).filter(item => {
+            if (trashKeywords.length === 0) return true;
+            const itemText = `${item.name} ${item.code} ${item.barcode}`.toLowerCase();
+            return trashKeywords.some(keyword => itemText.includes(keyword));
+        }).forEach(item => {
             trashArea.appendChild(createItemElement(item, 'trash'));
         });
 
@@ -774,6 +785,8 @@
             dataInput.value = '';
             searchBox.value = '';
             currentSearchTerm = '';
+            trashSearchBox.value = '';
+            currentTrashSearchTerm = '';
             localStorage.removeItem('binningToolState_v72');
             render();
             showToast("所有資料已成功清除。", 'success');
@@ -878,6 +891,8 @@
         if (AppState.trash.size === 0) { showToast("垃圾桶區是空的。", "info"); return; }
         if (confirm("確定要清空垃圾桶區嗎？\n此操作無法復原（垃圾桶內的物品將被永久移除，不會回到待分箱區）。")) {
             AppState.trash.clear();
+            trashSearchBox.value = '';
+            currentTrashSearchTerm = '';
             render();
             saveStateToLocalStorage();
             showToast("垃圾桶區已清空。", "success");
@@ -911,6 +926,10 @@
     searchBox.addEventListener('input', () => {
         const searchTerm = searchBox.value.trim();
         currentSearchTerm = searchTerm.toLowerCase();
+        render();
+    });
+    trashSearchBox.addEventListener('input', () => {
+        currentTrashSearchTerm = trashSearchBox.value.trim().toLowerCase();
         render();
     });
 
