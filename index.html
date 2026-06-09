@@ -208,38 +208,36 @@
         #choice-list .choice-item:hover { background-color: #f0f8ff; }
         #choice-list .choice-item .details { font-size: 12px; color: #555; margin-top: 4px; }
 
-        /* --- 垃圾桶區（精簡可收合）--- */
+        /* --- 未能分類商品區（精簡可收合）--- */
         #trash-section {
             flex-shrink: 0;
             margin: 0 20px 12px 20px;
-            border: 2px dashed #e0a8c4;
+            border: 2px dashed #ced4da;
             border-radius: 8px;
-            background-color: #fff5fa;
+            background-color: #f8f9fa;
             overflow: hidden;
         }
-        #trash-section.drag-over { background-color: #fde7f1; border-color: #d63384 !important; }
+        #trash-section.drag-over { background-color: #e9ecef; border-color: #2563eb !important; }
         #trash-list-header { padding: 0; }
         #trash-section h2 { margin: 0; padding: 8px 12px; border: none; font-size: 16px; cursor: pointer; }
-        #trash-title { color: #b02a6b; }
-        #trash-title .item-count { background-color: #d63384; }
+        #trash-title { color: #495057; }
+        #trash-title .item-count { background-color: #6c757d; }
         #trash-caret { font-size: 11px; display: inline-block; width: 12px; transition: transform 0.15s; }
-        #trash-hint { font-size: 12px; font-weight: normal; color: #c98bb0; margin-left: 4px; }
-        #clear-trash-btn { background-color: #dc3545; padding: 4px 10px; font-size: 13px; }
-        #clear-trash-btn:hover { background-color: #c82333; }
-        #dump-pool-btn { background-color: #d63384; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
-        #dump-pool-btn:hover { background-color: #b02a6b; }
+        #trash-hint { font-size: 12px; font-weight: normal; color: #868e96; margin-left: 4px; }
+        .trash-actions { display: flex; gap: 6px; }
+        #clear-trash-btn, #restore-trash-btn, #dump-pool-btn { padding: 4px 10px; font-size: 13px; white-space: nowrap; }
         #trash-area { max-height: 130px; overflow-y: auto; padding: 4px 10px 10px 10px; }
-        #trash-area .item { background-color: #fde7f1; border-color: #f3c6dd; margin-bottom: 8px; }
-        #trash-area .item strong { color: #b02a6b; }
+        #trash-area .item { background-color: #f1f3f5; border-color: #dee2e6; margin-bottom: 8px; }
+        #trash-area .item strong { color: #343a40; }
         /* 收合 或 空的時候：只剩一條 bar */
         #trash-section.collapsed #trash-area,
         #trash-section.collapsed #trash-search-box,
         #trash-section.is-empty #trash-area,
         #trash-section.is-empty #trash-search-box { display: none; }
-        #trash-search-box { width: calc(100% - 20px); box-sizing: border-box; margin: 4px 10px 6px 10px; padding: 6px 10px; border: 1px solid #e0a8c4; border-radius: 4px; font-size: 14px; }
+        #trash-search-box { width: calc(100% - 20px); box-sizing: border-box; margin: 4px 10px 6px 10px; padding: 6px 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
         #trash-section.collapsed #trash-caret { transform: rotate(-90deg); }
         #trash-section.is-empty #trash-caret { visibility: hidden; }
-        #trash-section.is-empty #clear-trash-btn { display: none; }
+        #trash-section.is-empty .trash-actions { display: none; }
         #trash-section:not(.is-empty) #trash-hint { display: none; }
         /* 待分箱區物品上的快速丟棄鈕 */
         .item { position: relative; }
@@ -249,7 +247,25 @@
             font-size: 15px; line-height: 1; padding: 3px 5px; border-radius: 4px;
             opacity: 0.65; transition: opacity 0.15s, background-color 0.15s;
         }
-        .trash-item-btn:hover { opacity: 1; background-color: #f8d7da; }
+        .trash-item-btn:hover { opacity: 1; background-color: #e9ecef; }
+
+        /* === 簡潔統一配色（中性為主，主要動作藍、危險紅）=== */
+        button, .button-label { background-color: #3f4858; }
+        button:hover, .button-label:hover { background-color: #2c333f; }
+        button:disabled { background-color: #aeb4bd; }
+        #parse-btn, #import-btn, #execute-command-btn, #modal-confirm-btn, #manual-add-confirm-btn, #scan-log-export-btn { background-color: #2563eb; }
+        #parse-btn:hover, #import-btn:hover, #execute-command-btn:hover, #modal-confirm-btn:hover, #manual-add-confirm-btn:hover, #scan-log-export-btn:hover { background-color: #1d4ed8; }
+        #clear-data-btn, #clear-trash-btn, #scan-log-clear-btn { background-color: #dc3545; }
+        #clear-data-btn:hover, #clear-trash-btn:hover, #scan-log-clear-btn:hover { background-color: #c82333; }
+        #mode-switch-btn, #mode-switch-btn:hover,
+        #mode-switch-btn.inbound-mode, #mode-switch-btn.inbound-mode:hover,
+        #mode-switch-btn.check-mode, #mode-switch-btn.check-mode:hover,
+        #scan-mode-btn.mode-intobox, #scan-mode-btn.mode-addpool, #scan-mode-btn.mode-addintobox,
+        #export-btn, #export-a4-pdf-btn, #export-a5-pdf-btn, #export-thermal-pdf-btn,
+        #quick-add-bins-btn, #scan-log-btn, #dump-pool-btn, #restore-trash-btn { background-color: #3f4858; }
+        #scan-mode-btn.mode-intobox:hover, #scan-mode-btn.mode-addpool:hover, #scan-mode-btn.mode-addintobox:hover,
+        #export-btn:hover, #export-a4-pdf-btn:hover, #export-a5-pdf-btn:hover, #export-thermal-pdf-btn:hover,
+        #quick-add-bins-btn:hover, #scan-log-btn:hover, #dump-pool-btn:hover, #restore-trash-btn:hover { background-color: #2c333f; }
     </style>
 </head>
 <body class="locked">
@@ -272,13 +288,13 @@
                 <div class="import-offline">未偵測到 JENJAN-AGENT 橋接。請先啟動 <code>python -m src.bridge</code> <button class="import-retry" id="import-retry" type="button">重試偵測</button></div>
             </div>
             <div class="controls">
-                <textarea id="data-input" placeholder="1. 在此貼上商品資料..."></textarea>
+                <textarea id="data-input" placeholder="貼上商品資料：編號⇥國際條碼⇥品名⇥數量（Tab 分隔、可從 Excel 複製；國際條碼可省略）"></textarea>
                 <div class="button-group">
                     <button id="mode-switch-btn">目前模式：出貨模式</button>
                     <button id="parse-btn">解析資料</button>
-                    <label for="import-csv-input" class="button-label" style="background-color:#ffc107; color:#212529;">還原CSV備份</label>
+                    <label for="import-csv-input" class="button-label">還原CSV備份</label>
                     <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
-                    <button id="manual-add-btn" style="background-color: #17a2b8;">手動新增商品</button>
+                    <button id="manual-add-btn">手動新增商品</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
@@ -299,7 +315,7 @@
             <div class="list-header">
                 <h2 id="pool-title">
                     <span>待分箱區 <span class="item-count" id="pool-count">0</span></span>
-                    <button id="dump-pool-btn" type="button" title="把待分箱區剩餘商品全部移到垃圾桶區">剩餘全丟垃圾桶</button>
+                    <button id="dump-pool-btn" type="button" title="把待分箱區剩餘商品全部移到未能分類商品區">剩餘全部移到未分類</button>
                 </h2>
                 <input type="text" id="search-box" placeholder="🔍 在此輸入關鍵字「篩選」列表..." style="margin: 0 20px 10px 20px; width: calc(100% - 40px);">
             </div>
@@ -307,11 +323,14 @@
             <div id="trash-section" class="is-empty">
                 <div class="list-header" id="trash-list-header">
                     <h2 id="trash-title">
-                        <span id="trash-toggle"><span id="trash-caret">▾</span> 🗑️ 垃圾桶區 <span class="item-count" id="trash-count">0</span><span id="trash-hint">— 把多餘物品拖到這裡</span></span>
-                        <button id="clear-trash-btn" title="永久清空垃圾桶區">清空垃圾桶</button>
+                        <span id="trash-toggle"><span id="trash-caret">▾</span> 未能分類商品區 <span class="item-count" id="trash-count">0</span><span id="trash-hint">— 拖入未能分類的商品</span></span>
+                        <span class="trash-actions">
+                            <button id="restore-trash-btn" type="button" title="把此區商品全部移回待分箱區">全部移回待分箱</button>
+                            <button id="clear-trash-btn" title="永久清空此區">清空此區</button>
+                        </span>
                     </h2>
                 </div>
-                <input type="text" id="trash-search-box" placeholder="🔍 篩選垃圾桶...">
+                <input type="text" id="trash-search-box" placeholder="🔍 篩選未分類...">
                 <div id="trash-area"></div>
             </div>
         </div>
@@ -442,6 +461,7 @@
     const trashSearchBox = document.getElementById('trash-search-box');
     const trashCount = document.getElementById('trash-count');
     const clearTrashBtn = document.getElementById('clear-trash-btn');
+    const restoreTrashBtn = document.getElementById('restore-trash-btn');
     const trashSection = document.getElementById('trash-section');
     const trashListHeader = document.getElementById('trash-list-header');
 
@@ -544,7 +564,7 @@
             binArea.appendChild(binEl);
         }
 
-        // 渲染垃圾桶區（支援篩選）
+        // 渲染未能分類商品區（支援篩選）
         trashArea.innerHTML = '';
         const trashKeywords = currentTrashSearchTerm.split(/[,、\s]+/).filter(Boolean);
         Array.from(AppState.trash.values()).filter(item => {
@@ -569,7 +589,7 @@
         if (source === 'pool') {
             const tb = document.createElement('span');
             tb.className = 'trash-item-btn';
-            tb.title = '移到垃圾桶區';
+            tb.title = '移到未能分類商品區';
             tb.textContent = '🗑️';
             itemEl.appendChild(tb);
         }
@@ -834,7 +854,7 @@
             currentMode = 'outbound';
             modeSwitchBtn.textContent = '目前模式：出貨模式';
             modeSwitchBtn.className = ''; 
-            dataInput.placeholder = '1. 在此貼上商品資料...';
+            dataInput.placeholder = '貼上商品資料：編號⇥國際條碼⇥品名⇥數量（Tab 分隔、可從 Excel 複製；國際條碼可省略）';
             manualAddBtn.style.display = 'inline-block';
             showToast('已切換至【出貨模式】', 'info');
         }
@@ -878,7 +898,7 @@
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
 
-    // --- 垃圾桶區：一鍵丟棄 / 清空 ---
+    // --- 未能分類商品區：一鍵丟棄 / 清空 ---
     itemListContent.addEventListener('click', (e) => {
         if (!e.target.classList.contains('trash-item-btn')) return;
         const itemEl = e.target.closest('.item');
@@ -889,40 +909,58 @@
         const name = item.name;
         const qty = item.quantity;
         moveItem(code, 'pool', 'trash', qty);
-        showToast(`已將 ${qty} 個 "${name}" 移到垃圾桶區`, 'info');
+        showToast(`已將 ${qty} 個 "${name}" 移到未能分類商品區`, 'info');
     });
 
     clearTrashBtn.addEventListener('click', () => {
-        if (AppState.trash.size === 0) { showToast("垃圾桶區是空的。", "info"); return; }
-        if (confirm("確定要清空垃圾桶區嗎？\n此操作無法復原（垃圾桶內的物品將被永久移除，不會回到待分箱區）。")) {
-            logEvent('垃圾桶', `清空垃圾桶（${AppState.trash.size} 項）`);
+        if (AppState.trash.size === 0) { showToast("未能分類商品區是空的。", "info"); return; }
+        if (confirm("確定要清空未能分類商品區嗎？\n此操作無法復原（此區內的商品將被永久移除，不會回到待分箱區）。")) {
+            logEvent('未分類', `清空未能分類商品區（${AppState.trash.size} 項）`);
             AppState.trash.clear();
             trashSearchBox.value = '';
             currentTrashSearchTerm = '';
             render();
             saveStateToLocalStorage();
-            showToast("垃圾桶區已清空。", "success");
+            showToast("未能分類商品區已清空。", "success");
         }
     });
 
-    // 一鍵把待分箱區剩餘商品全部移到垃圾桶區
+    // 一鍵把未能分類商品區全部移回待分箱區
+    restoreTrashBtn.addEventListener('click', () => {
+        if (AppState.trash.size === 0) { showToast("未能分類商品區是空的。", "info"); return; }
+        const n = AppState.trash.size;
+        if (confirm(`確定把未能分類商品區的 ${n} 項商品全部移回待分箱區嗎？`)) {
+            for (const [code, item] of AppState.trash) {
+                const ex = AppState.pool.get(code);
+                if (ex) { ex.quantity += item.quantity; } else { AppState.pool.set(code, { ...item }); }
+            }
+            AppState.trash.clear();
+            currentTrashSearchTerm = ''; trashSearchBox.value = '';
+            logEvent('未分類', `未能分類 ${n} 項商品全部移回待分箱區`);
+            render();
+            saveStateToLocalStorage();
+            showToast(`已將 ${n} 項商品移回待分箱區。`, "success");
+        }
+    });
+
+    // 一鍵把待分箱區剩餘商品全部移到未能分類商品區
     dumpPoolBtn.addEventListener('click', () => {
         if (AppState.pool.size === 0) { showToast("待分箱區是空的。", "info"); return; }
         const lines = AppState.pool.size;
-        if (confirm(`確定把待分箱區剩餘的 ${lines} 項商品全部移到垃圾桶區嗎？\n（之後仍可從垃圾桶區拖回，或用「清空垃圾桶」永久刪除）`)) {
+        if (confirm(`確定把待分箱區剩餘的 ${lines} 項商品全部移到未能分類商品區嗎？\n（之後仍可從未能分類商品區拖回，或用「清空此區」永久刪除）`)) {
             for (const [code, item] of AppState.pool) {
                 const ex = AppState.trash.get(code);
                 if (ex) { ex.quantity += item.quantity; } else { AppState.trash.set(code, { ...item }); }
             }
             AppState.pool.clear();
-            logEvent('垃圾桶', `待分箱區 ${lines} 項商品全部移到垃圾桶`);
+            logEvent('未分類', `待分箱區 ${lines} 項商品全部移到未能分類商品區`);
             render();
             saveStateToLocalStorage();
-            showToast(`已將待分箱區 ${lines} 項商品全部移到垃圾桶區。`, "success");
+            showToast(`已將待分箱區 ${lines} 項商品全部移到未能分類商品區。`, "success");
         }
     });
 
-    // 點標題列收合 / 展開垃圾桶清單（點「清空」鈕除外）
+    // 點標題列收合 / 展開未分類清單（點「清空」鈕除外）
     trashListHeader.addEventListener('click', (e) => {
         if (e.target.closest('#clear-trash-btn')) return;
         if (trashSection.classList.contains('is-empty')) return;
@@ -1042,7 +1080,7 @@
     let suppressLog = false;
     function locLabel(id) {
         if (id === 'pool') return '待分箱區';
-        if (id === 'trash') return '垃圾桶區';
+        if (id === 'trash') return '未能分類商品區';
         return AppState.bins.get(id)?.name || id;
     }
     function logEvent(cat, text, undo = null) {
@@ -1051,7 +1089,7 @@
         if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
         if (scanLogModal.style.display === 'flex') renderScanLog();
     }
-    const LOG_CAT_COLOR = { '掃描': '#0d6efd', '移動': '#20c997', '手動': '#28a745', '匯入': '#6610f2', '解析': '#6c757d', '箱子': '#fd7e14', '垃圾桶': '#d63384', '還原': '#e0a800', '錯誤': '#dc3545' };
+    const LOG_CAT_COLOR = { '掃描': '#0d6efd', '移動': '#20c997', '手動': '#28a745', '匯入': '#6610f2', '解析': '#6c757d', '箱子': '#fd7e14', '未分類': '#d63384', '還原': '#e0a800', '錯誤': '#dc3545' };
     function catBadge(cat) {
         const color = LOG_CAT_COLOR[cat] || '#6c757d';
         return `<span class="log-mode-badge" style="background:${color}">${logEsc(cat || '操作')}</span>`;
@@ -1296,7 +1334,7 @@
                     moveItem(itemInfo.code, itemInfo.source, targetBinId, 1);
                 }
             }
-            // 待分箱區 → 垃圾桶區
+            // 待分箱區 → 未能分類商品區
             else if (targetTrashEl && itemInfo.source === 'pool') {
                 const itemData = AppState.pool.get(itemInfo.code);
                 if (!itemData) return;
@@ -1306,7 +1344,7 @@
                     moveItem(itemInfo.code, 'pool', 'trash', 1);
                 }
             }
-            // 垃圾桶區 → 待分箱區 (還原)
+            // 未能分類商品區 → 待分箱區 (還原)
             else if (targetPoolEl && itemInfo.source === 'trash') {
                 const itemData = AppState.trash.get(itemInfo.code);
                 if (!itemData) return;
@@ -1462,9 +1500,9 @@
                     }); 
                 }
             });
-            // 垃圾桶區也一併輸出（箱號標示為「垃圾桶」）
+            // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += [orderNumber, '垃圾桶', '', '', item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n";
+                csvContent += [orderNumber, '未分類', '', '', item.code, item.barcode, item.name, item.quantity].map(formatCsvField).join(',') + "\n";
             });
             const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
