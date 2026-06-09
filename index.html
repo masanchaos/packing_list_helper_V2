@@ -1744,6 +1744,13 @@
             const orderNumber = orderNumberInput.value.trim() || 'NoOrder';
             return `${orderNumber}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}_packing_list${extension}`;
         }
+        // 匯出前提醒：待分箱區還有商品沒分箱（任一匯出都會先問）
+        function poolNotEmptyOk() {
+            const n = AppState.pool.size;
+            if (n === 0) return true;
+            const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
+            return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`);
+        }
         // 產生匯出用 CSV 字串（手動匯出與自動備份共用；垃圾桶不輸出）
         function buildExportCSV() {
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
@@ -1775,6 +1782,7 @@
         window.__plhBuildCSV = buildExportCSV; // 供外層「自動備份」取用同一份 CSV 產生器
         function exportCSV() {
             if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
+            if (!poolNotEmptyOk()) return;
             const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([buildExportCSV()], { type: 'text/csv;charset=utf-8;' }));
             link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
@@ -1782,6 +1790,7 @@
         // ★★★ 全面美化與升級的 A4 總表匯出 ★★★
         function exportA4PDF() { 
             if (AppState.bins.size === 0 && AppState.pool.size === 0) { showToast("沒有任何資料可以匯出！", "error"); return; }
+            if (!poolNotEmptyOk()) return;
             const btn = document.getElementById('export-a4-pdf-btn'); btn.disabled = true; btn.textContent = '準備預覽...';
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const exportDate = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -1872,6 +1881,7 @@
         // ★★★ 全面美化與升級的 A5 箱貼匯出 ★★★
         function exportA5BoxLabelsPDF() {
              if (AppState.bins.size === 0) { showToast("無資料！", "error"); return; }
+             if (!poolNotEmptyOk()) return;
              const btn = document.getElementById('export-a5-pdf-btn'); btn.disabled=true; btn.textContent='準備預覽...';
              const orderNumber = orderNumberInput.value.trim() || 'N/A';
              let contentHTML = ``;
@@ -1977,6 +1987,7 @@
         // 熱感紙 (10x15) 匯出
         function exportThermalLabelsPDF() {
             if (AppState.bins.size === 0) { showToast("無資料！", "error"); return; }
+             if (!poolNotEmptyOk()) return;
             const btn = document.getElementById('export-thermal-pdf-btn'); btn.disabled=true; btn.textContent = '準備預覽...';
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
              let contentHTML = ``;
