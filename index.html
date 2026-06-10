@@ -483,7 +483,6 @@
                         </span>
                         <span class="trash-actions" data-for="trash">
                             <button id="restore-trash-btn" type="button" title="把未分類商品全部移回待分箱區">全部移回待分箱</button>
-                            <button id="clear-trash-btn" title="永久清空未分類區">清空未分類</button>
                         </span>
                         <span class="trash-actions" data-for="recycle">
                             <button id="restore-recycle-btn" type="button" title="把垃圾桶商品全部還原到待分箱區">全部還原</button>
@@ -627,7 +626,6 @@
     const trashArea = document.getElementById('trash-area');
     const trashSearchBox = document.getElementById('trash-search-box');
     const trashCount = document.getElementById('trash-count');
-    const clearTrashBtn = document.getElementById('clear-trash-btn');
     const restoreTrashBtn = document.getElementById('restore-trash-btn');
     const trashSection = document.getElementById('trash-section');
     const trashListHeader = document.getElementById('trash-list-header');
@@ -1140,19 +1138,6 @@
         tabBtn.addEventListener('click', (e) => { e.stopPropagation(); switchDisposalTab(tabBtn.dataset.tab); });
     });
 
-    clearTrashBtn.addEventListener('click', () => {
-        if (AppState.trash.size === 0) { showToast("未能分類商品區是空的。", "info"); return; }
-        if (confirm("確定要清空未能分類商品區嗎？\n此操作無法復原（此區內的商品將被永久移除，不會回到待分箱區）。")) {
-            logEvent('未分類', `清空未能分類商品區（${AppState.trash.size} 項）`);
-            AppState.trash.clear();
-            trashSearchBox.value = '';
-            currentTrashSearchTerm = '';
-            render();
-            saveStateToLocalStorage();
-            showToast("未能分類商品區已清空。", "success");
-        }
-    });
-
     // 一鍵把未能分類商品區全部移回待分箱區
     restoreTrashBtn.addEventListener('click', () => {
         if (AppState.trash.size === 0) { showToast("未能分類商品區是空的。", "info"); return; }
@@ -1206,7 +1191,7 @@
     dumpPoolBtn.addEventListener('click', () => {
         if (AppState.pool.size === 0) { showToast("待分箱區是空的。", "info"); return; }
         const lines = AppState.pool.size;
-        if (confirm(`確定把待分箱區剩餘的 ${lines} 項商品全部移到未能分類商品區嗎？\n（之後仍可從未能分類商品區拖回，或用「清空此區」永久刪除）`)) {
+        if (confirm(`確定把待分箱區剩餘的 ${lines} 項商品全部移到未能分類商品區嗎？\n（之後仍可從未分類區拖回，或丟到垃圾桶刪除）`)) {
             for (const [code, item] of AppState.pool) {
                 const ex = AppState.trash.get(code);
                 if (ex) { ex.quantity += item.quantity; } else { AppState.trash.set(code, { ...item }); }
