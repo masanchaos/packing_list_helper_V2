@@ -320,6 +320,9 @@
         .backup-bar[data-state="needAuth"] #backup-enable-btn,
         .backup-bar[data-state="active"] #backup-now-btn,
         .backup-bar[data-state="active"] #backup-off-btn { display: inline-block; }
+        .backup-bar[data-state="downloads"] { background: #e7f0ff; border-color: #c3dafe; color: #1e3a8a; }
+        .backup-bar[data-state="downloads"] #backup-setup-btn,
+        .backup-bar[data-state="downloads"] #backup-off-btn { display: inline-block; }
         /* 匯出資料夾狀態列：中性(未設)/綠(已設) */
         #export-folder-bar { margin: 10px 16px 2px; background: #eef2f7; border-color: #d7dee7; color: #38465a; }
         #export-folder-bar[data-state="set"] { background: #e7f7ec; border-color: #b7e4c7; color: #1b5e34; }
@@ -1362,6 +1365,7 @@
     }
     function logEvent(cat, text, undo = null) {
         if (suppressLog) return;
+        bumpOps();
         AppState.scanLog.push({ ts: Date.now(), cat, text, undo, undone: false });
         if (AppState.scanLog.length > 1000) AppState.scanLog.splice(0, AppState.scanLog.length - 1000);
         if (scanLogModal.style.display === 'flex') renderScanLog();
@@ -2231,7 +2235,7 @@
         document.body.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
     }
     // ===== 自動備份到本機資料夾（File System Access）=====
-    let backupDirHandle = null, backupActive = false, backupTimer = null, backupLastError = '';
+    let backupDirHandle = null, backupActive = false, backupTimer = null, backupLastError = '', downloadsFallback = false, sessionOps = 0;
     const BK_DB = 'plh_backup', BK_STORE = 'kv', BK_KEY = 'dirHandle';
     function backupSupported() { return 'showDirectoryPicker' in window; }
     function bkIdbOpen() {
@@ -2255,6 +2259,7 @@
         if (state === 'active') el.textContent = `🛟 自動備份中 → ${name}` + (info && info.time ? `（最後備份 ${bkTimeStr(info.time)}）` : '');
         else if (state === 'needAuth') el.textContent = `🛟 已設定備份資料夾（${name}），請點右側「啟用自動備份」`;
         else if (state === 'error') el.textContent = `⚠️ 自動備份失敗：${backupLastError}（請重新設定）`;
+        else if (state === 'downloads') el.textContent = `🛟 自動備份：下載到「下載」資料夾` + (info && info.time ? `（最後 ${bkTimeStr(info.time)}；每約 30 秒下載一次）` : '（每約 30 秒自動下載一次；設定資料夾可改為不洗版的覆寫備份）');
         else el.textContent = '🛟 自動備份：未啟用（資料只存在本機瀏覽器，建議設定）';
     }
     async function bkEnsurePerm(handle, request) {
@@ -2281,13 +2286,46 @@
             updateBackupUI('error');
         }
     }
-    function scheduleBackup() { if (!backupActive) return; clearTimeout(backupTimer); backupTimer = setTimeout(writeBackupNow, 4000); }
+    const DL_DEBOUNCE = 30000; // 下載備份防抖（避免洗版下載夾）
+    function scheduleBackup() {
+        clearTimeout(backupTimer);
+        if (backupActive) backupTimer = setTimeout(writeBackupNow, 4000);
+        else if (downloadsFallback) backupTimer = setTimeout(downloadBackupNow, DL_DEBOUNCE);
+    }
+    function bumpOps() { sessionOps++; maybeActivateDownloadsFallback(); }
+    function maybeActivateDownloadsFallback() {
+        if (downloadsFallback || backupActive || backupDirHandle) return; // 已在備份 / 已設資料夾就不動
+        if (sessionOps > 10) {
+            downloadsFallback = true;
+            updateBackupUI('downloads');
+            showToast('已操作多次但尚未設定備份資料夾 → 自動改為「下載備份到 Downloads」保護資料；建議改設定資料夾以免下載夾累積檔案。', 'info');
+            downloadBackupNow();
+        }
+    }
+    function downloadBackupNow() {
+        if (!downloadsFallback) return;
+        if (AppState.bins.size === 0 && AppState.trash.size === 0) return; // 空資料不下載
+        if (typeof window.__plhBuildCSV !== 'function') return;
+        try {
+            const now = new Date();
+            const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+            const order = orderNumberInput.value.trim() || 'NoOrder';
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([window.__plhBuildCSV()], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `${order}_自動備份_${ts}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            updateBackupUI('downloads', { time: now });
+        } catch (e) {}
+    }
+    function remindNoBackup() {
+        showToast('提醒：尚未設定備份資料夾，資料只存在本機瀏覽器；建議點「設定備份資料夾」（操作多次後會自動改為下載備份）。', 'info');
+    }
     async function pickBackupFolder() {
         if (!backupSupported()) { showToast('此瀏覽器不支援資料夾自動備份，請改用 Chrome / Edge。', 'error'); return; }
         try {
             const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'plh-backup' });
             if (!(await bkEnsurePerm(handle, true))) { showToast('未取得資料夾寫入權限。', 'error'); return; }
-            backupDirHandle = handle; backupActive = true;
+            backupDirHandle = handle; backupActive = true; downloadsFallback = false;
             await bkIdbSet(BK_KEY, handle);
             await writeBackupNow();
             if (backupActive) { showToast(`已啟用自動備份 → ${handle.name}`, 'success'); updateBackupUI('active', { time: new Date() }); }
@@ -2301,13 +2339,13 @@
             if (!backupDirHandle) backupDirHandle = await bkIdbGet(BK_KEY);
             if (!backupDirHandle) { updateBackupUI('off'); return; }
             if (!(await bkEnsurePerm(backupDirHandle, true))) { showToast('未取得權限。', 'error'); updateBackupUI('needAuth'); return; }
-            backupActive = true;
+            backupActive = true; downloadsFallback = false;
             await writeBackupNow();
             if (backupActive) { showToast(`自動備份已啟用 → ${backupDirHandle.name}`, 'success'); updateBackupUI('active', { time: new Date() }); }
         } catch (e) { showToast('啟用失敗：' + ((e && e.message) || e), 'error'); }
     }
     function disableBackup() {
-        backupActive = false; backupDirHandle = null; clearTimeout(backupTimer);
+        backupActive = false; backupDirHandle = null; downloadsFallback = false; clearTimeout(backupTimer);
         bkIdbClear(BK_KEY);
         updateBackupUI('off');
         showToast('已停止自動備份。', 'info');
@@ -2317,7 +2355,7 @@
         if (!backupSupported()) { if (bar) bar.style.display = 'none'; return; }
         try {
             const stored = await bkIdbGet(BK_KEY);
-            if (!stored) { updateBackupUI('off'); return; }
+            if (!stored) { updateBackupUI('off'); remindNoBackup(); return; }
             backupDirHandle = stored;
             // 免點自動恢復：瀏覽器若仍記得授權(persistent permission)就直接啟用，不用每次重開都再點一次
             let perm = 'prompt';
