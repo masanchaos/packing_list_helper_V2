@@ -111,6 +111,14 @@
         .import-status.err { color: #dc3545; }
         .import-retry { background: none; color: #0d6efd; border: none; padding: 0; font-size: 12px; cursor: pointer; text-decoration: underline; }
         .import-retry:hover { background: none; color: #0b5ed7; }
+        /* 已匯入單號清單 */
+        .imported-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 2px; }
+        .imported-list:empty { display: none; }
+        .imported-list .il-title { width: 100%; font-size: 11px; color: #888; margin-bottom: 1px; }
+        #imported-clear { background: none; border: none; color: #0d6efd; font-size: 11px; cursor: pointer; padding: 0 0 0 6px; text-decoration: underline; }
+        .imported-chip { display: inline-flex; align-items: center; gap: 5px; background: #e8f1ff; color: #0b3a8a; border: 1px solid #cfe0ff; border-radius: 12px; padding: 2px 9px; font-size: 12px; line-height: 1.6; }
+        .imported-chip .il-sn { font-weight: 700; }
+        .imported-chip .il-dup { color: #d97706; font-weight: 700; }
 
         .order-input, .command-group { padding: 15px 20px 0 20px; flex-shrink: 0; }
         .order-input label, .command-group label { font-weight: bold; margin-right: 10px; display: block; margin-bottom: 5px;}
@@ -443,6 +451,7 @@
                     <div class="import-status" id="import-status"></div>
                 </div>
                 <div class="import-offline">未偵測到 JENJAN-AGENT 橋接。請先啟動 <code>python -m src.bridge</code> <button class="import-retry" id="import-retry" type="button">重試偵測</button></div>
+                <div class="imported-list" id="imported-list"></div>
             </div>
             <div class="controls">
                 <textarea id="data-input" placeholder="貼上商品資料：編號⇥國際條碼⇥品名⇥數量（Tab 分隔、可從 Excel 複製；國際條碼可省略）"></textarea>
@@ -618,6 +627,7 @@
     const importBtn = document.getElementById('import-btn');
     const importStatus = document.getElementById('import-status');
     const importRetry = document.getElementById('import-retry');
+    const importedList = document.getElementById('imported-list');
     const commandInput = document.getElementById('command-input');
     const executeCommandBtn = document.getElementById('execute-command-btn');
     const poolTitle = document.getElementById('pool-title');
@@ -658,7 +668,7 @@
     const newItemCodeAutoBtn = document.getElementById('new-item-code-auto');
     const newItemNameAutoBtn = document.getElementById('new-item-name-auto');
     
-    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [] };
+    let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [], importedOrders: [] };
     let binCounter = 0;
     let currentSearchTerm = '';
     let currentTrashSearchTerm = '';
@@ -1024,6 +1034,8 @@
             AppState.bins.clear();
             AppState.trash.clear();
             AppState.recycle.clear();
+            AppState.importedOrders = [];
+            renderImportedList();
             AppState.scanLog = [];
             AppState.lockedBinId = null;
             binCounter = 0;
@@ -1499,6 +1511,11 @@
             saveStateToLocalStorage();
             const label = type === 'entry' ? '入倉單' : '出貨單';
             logEvent('匯入', `${label} ${sn}：匯入 ${lines} 項 / ${units} 件`);
+            // 記錄已匯入單號（同 type+sn 重複匯入則標記次數）
+            const prev = AppState.importedOrders.find(o => o.type === type && o.sn === sn);
+            if (prev) { prev.count++; prev.lines = lines; prev.units = units; }
+            else { AppState.importedOrders.push({ type, label, sn, lines, units, count: 1 }); }
+            renderImportedList();
             setImportStatus(`已匯入 ${lines} 項 / ${units} 件（${label} ${sn}）`, 'ok');
             showToast(`已從${label} ${sn} 匯入 ${lines} 項、${units} 件`, 'success');
             importSn.value = '';
@@ -1515,6 +1532,23 @@
     importBtn.addEventListener('click', importOrder);
     importSn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); importOrder(); } });
     importRetry.addEventListener('click', refreshBridge);
+
+    // 已匯入單號清單（橋接斷線也看得到；持久化；隨「清除全部資料」一起清）
+    function renderImportedList() {
+        if (!importedList) return;
+        const arr = AppState.importedOrders || [];
+        if (!arr.length) { importedList.innerHTML = ''; return; }
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        let html = `<span class="il-title">本次已匯入單號（${arr.length} 筆）<button id="imported-clear" type="button" title="只清除此清單，不會影響已匯入的商品">清空清單</button></span>`;
+        arr.forEach(o => {
+            const t = o.label || (o.type === 'entry' ? '入倉單' : '出貨單');
+            html += `<span class="imported-chip"><span class="il-sn">${esc(o.sn)}</span> ${esc(t)}·${o.lines}項${o.count > 1 ? ` <span class="il-dup">⚠重複×${o.count}</span>` : ''}</span>`;
+        });
+        importedList.innerHTML = html;
+    }
+    importedList.addEventListener('click', (e) => {
+        if (e.target.closest('#imported-clear')) { AppState.importedOrders = []; renderImportedList(); saveStateToLocalStorage(); }
+    });
     refreshBridge();
 
     binArea.addEventListener('click', (e) => {
@@ -2339,6 +2373,7 @@
             bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
             trash: Array.from(AppState.trash.entries()),
             recycle: Array.from(AppState.recycle.entries()),
+            importedOrders: AppState.importedOrders,
             scanLog: AppState.scanLog,
             scanMode,
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
@@ -2353,10 +2388,12 @@
         AppState.bins = new Map(d.bins.map(([k,v]) => [k, {...v, items: new Map(v.items), note: v.note || ''}]));
         AppState.trash = new Map(d.trash || []);
         AppState.recycle = new Map(d.recycle || []);
+        AppState.importedOrders = d.importedOrders || [];
         AppState.scanLog = d.scanLog || [];
         binCounter = d.binCounter; orderNumberInput.value = d.orderNumber; AppState.lockedBinId = d.lockedBinId;
         if (d.scanMode && SCAN_MODE_INFO[d.scanMode]) { scanMode = d.scanMode; applyScanMode(); }
         render();
+        renderImportedList();
     }
     orderNumberInput.addEventListener('input', saveStateToLocalStorage);
     document.addEventListener('DOMContentLoaded', loadStateFromLocalStorage);
