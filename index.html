@@ -781,8 +781,10 @@
             acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['del', '✕', '刪除此商品（可在操作紀錄復原）']];
         } else if (source === 'trash') {
             acts = [['to-pool', '↩️', '移回待分箱'], ['to-recycle', '🗑️', '移到垃圾桶']];
-        } else { // 待分箱 / 箱子
+        } else if (source === 'pool') {
             acts = [['to-trash', '📥', '移到未分類'], ['to-recycle', '🗑️', '移到垃圾桶']];
+        } else { // 箱子
+            acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['to-recycle', '🗑️', '移到垃圾桶']];
         }
         const actBox = document.createElement('div');
         actBox.className = 'item-actions';
@@ -899,8 +901,13 @@
         const srcMap = getItemMap(srcId);
         const item = srcMap && srcMap.get(code);
         if (!item) return;
-        if (item.quantity > 1) showQuantityModal(item, srcId, tgtId);
-        else moveItem(code, srcId, tgtId, item.quantity);
+        if (item.quantity > 1) {
+            showQuantityModal(item, srcId, tgtId); // 多件：數量視窗即為那「確認一次」
+        } else {
+            // 單件箱中商品：操作前先確認一次（避免誤動已分箱的商品）；其他區維持直接移動
+            if (AppState.bins.has(srcId) && !confirm(`確定要將「${item.name}」從「${locLabel(srcId)}」移到「${locLabel(tgtId)}」嗎？`)) return;
+            moveItem(code, srcId, tgtId, item.quantity);
+        }
     }
 
     function hideQuantityModal() {
