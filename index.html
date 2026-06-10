@@ -767,7 +767,7 @@
         // 情境操作鈕：依商品所在區決定可去哪
         let acts;
         if (source === 'recycle') {
-            acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['del', '✕', '永久刪除此商品']];
+            acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['del', '✕', '刪除此商品（可在操作紀錄復原）']];
         } else if (source === 'trash') {
             acts = [['to-pool', '↩️', '移回待分箱'], ['to-recycle', '🗑️', '移到垃圾桶']];
         } else { // 待分箱 / 箱子
@@ -1118,10 +1118,12 @@
         if (!item) return;
         if (act === 'del') {
             const name = item.name, qty = item.quantity;
+            if (!confirm(`確定要刪除「${name}」（共 ${qty} 件）嗎？\n刪除後仍可在「操作紀錄」復原。`)) return;
+            const snapshot = { ...item };
             map.delete(code);
-            logEvent('垃圾桶', `永久刪除「${name}」×${qty}`);
+            logEvent('垃圾桶', `刪除「${name}」×${qty}`, { kind: 'del', loc: source, item: snapshot });
             render(); saveStateToLocalStorage();
-            showToast(`已永久刪除 "${name}"`, 'info');
+            showToast(`已刪除「${name}」，可在操作紀錄復原`, 'info');
             return;
         }
         const target = act === 'to-recycle' ? 'recycle' : act === 'to-trash' ? 'trash' : 'pool';
@@ -1390,6 +1392,13 @@
                 if (it && it.quantity > u.qty) { it.quantity -= u.qty; ok = true; }
                 else if (it) { map.delete(u.code); ok = true; }
                 else reason = '該商品已不在原位置';
+            } else if (u.kind === 'del') {
+                const map = getItemMap(u.loc);
+                if (map) {
+                    const ex = map.get(u.item.code);
+                    if (ex) ex.quantity += u.item.quantity; else map.set(u.item.code, { ...u.item });
+                    ok = true;
+                } else reason = '找不到原區域';
             }
         } finally { suppressLog = false; }
         if (ok) {
