@@ -312,6 +312,12 @@
         .backup-bar[data-state="needAuth"] #backup-enable-btn,
         .backup-bar[data-state="active"] #backup-now-btn,
         .backup-bar[data-state="active"] #backup-off-btn { display: inline-block; }
+        /* 匯出資料夾狀態列：中性(未設)/綠(已設) */
+        #export-folder-bar { margin: 10px 16px 2px; background: #eef2f7; border-color: #d7dee7; color: #38465a; }
+        #export-folder-bar[data-state="set"] { background: #e7f7ec; border-color: #b7e4c7; color: #1b5e34; }
+        #export-folder-bar #export-folder-set-btn { display: inline-block; }
+        #export-folder-bar[data-state="set"] #export-folder-clear-btn { display: inline-block; }
+        #export-folder-bar #export-folder-clear-btn { color: #ff3b30; }
 
         /* ============================================================
            iOS 風格主題（覆蓋上方樣式）
@@ -504,6 +510,13 @@
                     <button id="export-a4-pdf-btn">匯出 PDF (A4總表)</button>
                     <button id="export-a5-pdf-btn">匯出 PDF (A5箱貼)</button>
                     <button id="export-thermal-pdf-btn">匯出 熱感紙 (10x15)</button>
+                </div>
+                <div id="export-folder-bar" class="backup-bar" data-state="off">
+                    <span id="export-folder-status">📁 匯出 CSV 目前直接下載到「下載」資料夾</span>
+                    <span class="backup-acts">
+                        <button id="export-folder-set-btn" type="button">設定匯出資料夾</button>
+                        <button id="export-folder-clear-btn" type="button">改回下載</button>
+                    </span>
                 </div>
             </div>
             <div id="bin-area-title-wrapper"></div>
@@ -1774,11 +1787,18 @@
             return csvContent;
         }
         window.__plhBuildCSV = buildExportCSV; // 供外層「自動備份」取用同一份 CSV 產生器
-        function exportCSV() {
+        async function exportCSV() {
             if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
             if (!poolNotEmptyOk()) return;
-            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([buildExportCSV()], { type: 'text/csv;charset=utf-8;' }));
-            link.download = generateExportFilename('.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            const csv = buildExportCSV();
+            const filename = generateExportFilename('.csv');
+            // 有設定匯出資料夾就寫進去；沒設定或寫入失敗則下載到 Downloads
+            if (exportDirHandle && await saveCsvToExportFolder(csv, filename)) {
+                showToast(`已匯出到「${exportDirHandle.name}」：${filename}`, 'success');
+                return;
+            }
+            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
         
         // ★★★ 全面美化與升級的 A4 總表匯出 ★★★
@@ -2181,9 +2201,9 @@
             r.onerror = () => rej(r.error);
         });
     }
-    async function bkIdbSet(v) { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).put(v, BK_KEY); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
-    async function bkIdbGet() { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readonly'); const q = tx.objectStore(BK_STORE).get(BK_KEY); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
-    async function bkIdbClear() { const db = await bkIdbOpen(); return new Promise((res) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).delete(BK_KEY); tx.oncomplete = () => res(); }); }
+    async function bkIdbSet(key, v) { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).put(v, key); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function bkIdbGet(key) { const db = await bkIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(BK_STORE, 'readonly'); const q = tx.objectStore(BK_STORE).get(key); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
+    async function bkIdbClear(key) { const db = await bkIdbOpen(); return new Promise((res) => { const tx = db.transaction(BK_STORE, 'readwrite'); tx.objectStore(BK_STORE).delete(key); tx.oncomplete = () => res(); }); }
     function bkTodayStamp() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
     function bkTimeStr(d) { return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
     function updateBackupUI(state, info) {
@@ -2227,7 +2247,7 @@
             const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'plh-backup' });
             if (!(await bkEnsurePerm(handle, true))) { showToast('未取得資料夾寫入權限。', 'error'); return; }
             backupDirHandle = handle; backupActive = true;
-            await bkIdbSet(handle);
+            await bkIdbSet(BK_KEY, handle);
             await writeBackupNow();
             if (backupActive) { showToast(`已啟用自動備份 → ${handle.name}`, 'success'); updateBackupUI('active', { time: new Date() }); }
         } catch (e) {
@@ -2237,7 +2257,7 @@
     }
     async function reactivateBackup() {
         try {
-            if (!backupDirHandle) backupDirHandle = await bkIdbGet();
+            if (!backupDirHandle) backupDirHandle = await bkIdbGet(BK_KEY);
             if (!backupDirHandle) { updateBackupUI('off'); return; }
             if (!(await bkEnsurePerm(backupDirHandle, true))) { showToast('未取得權限。', 'error'); updateBackupUI('needAuth'); return; }
             backupActive = true;
@@ -2247,15 +2267,55 @@
     }
     function disableBackup() {
         backupActive = false; backupDirHandle = null; clearTimeout(backupTimer);
-        bkIdbClear();
+        bkIdbClear(BK_KEY);
         updateBackupUI('off');
         showToast('已停止自動備份。', 'info');
     }
     async function initBackup() {
         const bar = document.getElementById('backup-bar');
         if (!backupSupported()) { if (bar) bar.style.display = 'none'; return; }
-        try { const stored = await bkIdbGet(); if (stored) { backupDirHandle = stored; updateBackupUI('needAuth'); } else updateBackupUI('off'); }
+        try { const stored = await bkIdbGet(BK_KEY); if (stored) { backupDirHandle = stored; updateBackupUI('needAuth'); } else updateBackupUI('off'); }
         catch (e) { updateBackupUI('off'); }
+    }
+
+    // ===== 匯出 CSV 的「指定資料夾」（獨立於自動備份）=====
+    let exportDirHandle = null;
+    async function pickExportFolder() {
+        if (!backupSupported()) { showToast('此瀏覽器不支援指定資料夾，請改用 Chrome / Edge。', 'error'); return; }
+        try {
+            const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'plh-export' });
+            if (!(await bkEnsurePerm(handle, true))) { showToast('未取得資料夾寫入權限。', 'error'); return; }
+            exportDirHandle = handle;
+            await bkIdbSet('exportDirHandle', handle);
+            updateExportFolderUI();
+            showToast(`匯出資料夾已設定 → ${handle.name}`, 'success');
+        } catch (e) { if (e && e.name === 'AbortError') return; showToast('設定匯出資料夾失敗：' + ((e && e.message) || e), 'error'); }
+    }
+    function clearExportFolder() {
+        exportDirHandle = null; bkIdbClear('exportDirHandle'); updateExportFolderUI();
+        showToast('匯出已改回下載到「下載」資料夾。', 'info');
+    }
+    function updateExportFolderUI() {
+        const bar = document.getElementById('export-folder-bar'); if (!bar) return;
+        const el = document.getElementById('export-folder-status');
+        if (exportDirHandle) { bar.dataset.state = 'set'; el.textContent = `📁 匯出 CSV 會存到資料夾：${exportDirHandle.name}`; }
+        else { bar.dataset.state = 'off'; el.textContent = '📁 匯出 CSV 目前直接下載到「下載」資料夾'; }
+    }
+    async function initExportFolder() {
+        const bar = document.getElementById('export-folder-bar');
+        if (!backupSupported()) { if (bar) bar.style.display = 'none'; return; }
+        try { const stored = await bkIdbGet('exportDirHandle'); if (stored) exportDirHandle = stored; } catch (e) {}
+        updateExportFolderUI();
+    }
+    // 把 CSV 寫進指定匯出資料夾；成功 true、失敗 false（呼叫端可退回下載）
+    async function saveCsvToExportFolder(csvString, filename) {
+        if (!exportDirHandle) return false;
+        try {
+            if (!(await bkEnsurePerm(exportDirHandle, true))) return false;
+            const fh = await exportDirHandle.getFileHandle(filename, { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([csvString], { type: 'text/csv;charset=utf-8;' })); await w.close();
+            return true;
+        } catch (e) { showToast('寫入匯出資料夾失敗，改為下載。', 'error'); return false; }
     }
 
     function saveStateToLocalStorage() {
@@ -2292,6 +2352,10 @@
     document.getElementById('backup-off-btn').addEventListener('click', disableBackup);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) writeBackupNow(); });
     initBackup();
+    // 匯出資料夾：按鈕事件 + 啟動偵測
+    document.getElementById('export-folder-set-btn').addEventListener('click', pickExportFolder);
+    document.getElementById('export-folder-clear-btn').addEventListener('click', clearExportFolder);
+    initExportFolder();
 </script>
 </body>
 </html>
