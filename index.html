@@ -2274,8 +2274,16 @@
     async function initBackup() {
         const bar = document.getElementById('backup-bar');
         if (!backupSupported()) { if (bar) bar.style.display = 'none'; return; }
-        try { const stored = await bkIdbGet(BK_KEY); if (stored) { backupDirHandle = stored; updateBackupUI('needAuth'); } else updateBackupUI('off'); }
-        catch (e) { updateBackupUI('off'); }
+        try {
+            const stored = await bkIdbGet(BK_KEY);
+            if (!stored) { updateBackupUI('off'); return; }
+            backupDirHandle = stored;
+            // 免點自動恢復：瀏覽器若仍記得授權(persistent permission)就直接啟用，不用每次重開都再點一次
+            let perm = 'prompt';
+            try { perm = await stored.queryPermission({ mode: 'readwrite' }); } catch (e) {}
+            if (perm === 'granted') { backupActive = true; updateBackupUI('active', { time: new Date() }); writeBackupNow(); }
+            else updateBackupUI('needAuth');
+        } catch (e) { updateBackupUI('off'); }
     }
 
     // ===== 匯出 CSV 的「指定資料夾」（獨立於自動備份）=====
