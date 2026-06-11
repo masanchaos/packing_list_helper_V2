@@ -1507,8 +1507,14 @@
                 if (!code) return;
                 const qty = parseInt(it.qty, 10) || 0;
                 const name = (it.name || '').trim() || code;
+                const barcode = String(it.barcode || '').trim() || 'NA';
                 const ex = AppState.pool.get(code);
-                if (ex) { ex.quantity += qty; } else { AppState.pool.set(code, { code, barcode: 'NA', name, quantity: qty }); }
+                if (ex) {
+                    ex.quantity += qty;
+                    if ((!ex.barcode || ex.barcode === 'NA') && barcode !== 'NA') ex.barcode = barcode;
+                } else {
+                    AppState.pool.set(code, { code, barcode, name, quantity: qty });
+                }
                 lines++; units += qty;
             });
             render();
