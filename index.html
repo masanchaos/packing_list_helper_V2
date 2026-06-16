@@ -278,6 +278,8 @@
         /* 每個商品的情境操作小鈕（移到未分類 / 垃圾桶 / 還原 / 永久刪除） */
         .item { position: relative; padding-right: 56px; }
         .item.acts-3 { padding-right: 82px; }
+        .item.acts-4 { padding-right: 120px; }
+        .item-act.edit:hover { background-color: #e7f0ff; }
         .item-actions {
             position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
             display: flex; gap: 1px;
@@ -582,6 +584,25 @@
         </div>
     </div>
 
+    <div id="edit-item-modal" class="modal-overlay">
+        <div class="modal-content" style="width: 400px; text-align: left;">
+            <h3>編輯商品 <span style="font-size:13px; font-weight:400; color:#8e8e93;">（手動新增）</span></h3>
+            <div style="font-size:13px; color:#8e8e93; margin-bottom:14px;">所在位置：<span id="edit-item-loc">—</span></div>
+            <label for="edit-item-code">商品編號:</label>
+            <input type="text" id="edit-item-code" style="width:100%; margin-bottom:10px;" placeholder="留空 = 自動 NoBarCode">
+            <label for="edit-item-barcode">國際條碼:</label>
+            <input type="text" id="edit-item-barcode" style="width:100%; margin-bottom:10px;" placeholder="留空 = NA（無條碼）">
+            <label for="edit-item-name">商品名稱:</label>
+            <input type="text" id="edit-item-name" style="width:100%; margin-bottom:10px;" placeholder="留空 = 自動 NoName">
+            <label for="edit-item-qty">數量:</label>
+            <input type="number" id="edit-item-qty" style="width:100%; margin-bottom:18px;" min="1" value="1">
+            <div class="button-group" style="justify-content: center;">
+                <button id="edit-item-confirm-btn">儲存變更</button>
+                <button id="edit-item-cancel-btn">取消</button>
+            </div>
+        </div>
+    </div>
+
     <div id="scan-log-modal" class="modal-overlay">
         <div class="modal-content" style="width: 560px; max-width: 92vw; text-align: left;">
             <h3 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -670,7 +691,16 @@
     const newItemQtyInput = document.getElementById('new-item-qty');
     const newItemCodeAutoBtn = document.getElementById('new-item-code-auto');
     const newItemNameAutoBtn = document.getElementById('new-item-name-auto');
-    
+    // --- 編輯商品（僅限手動新增的商品）DOM ---
+    const editItemModal = document.getElementById('edit-item-modal');
+    const editItemConfirmBtn = document.getElementById('edit-item-confirm-btn');
+    const editItemCancelBtn = document.getElementById('edit-item-cancel-btn');
+    const editItemCodeInput = document.getElementById('edit-item-code');
+    const editItemBarcodeInput = document.getElementById('edit-item-barcode');
+    const editItemNameInput = document.getElementById('edit-item-name');
+    const editItemQtyInput = document.getElementById('edit-item-qty');
+    let editTargetSource = null, editTargetCode = null;
+
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [], importedOrders: [] };
     let binCounter = 0;
     let currentSearchTerm = '';
@@ -799,6 +829,8 @@
         } else { // 箱子
             acts = [['to-pool', '↩️', '移回待分箱'], ['to-trash', '📥', '移到未分類'], ['to-recycle', '🗑️', '移到垃圾桶']];
         }
+        // 手動新增的商品：不論在哪一區，都可再編輯
+        if (item.manual) acts = [['edit', '✏️', '編輯此商品（手動新增）'], ...acts];
         const actBox = document.createElement('div');
         actBox.className = 'item-actions';
         acts.forEach(([act, glyph, title]) => {
@@ -810,7 +842,8 @@
             actBox.appendChild(b);
         });
         itemEl.appendChild(actBox);
-        if (acts.length >= 3) itemEl.classList.add('acts-3');
+        if (acts.length === 3) itemEl.classList.add('acts-3');
+        else if (acts.length >= 4) itemEl.classList.add('acts-4');
         return itemEl;
     }
 
@@ -1149,6 +1182,7 @@
         const map = getItemMap(source);
         const item = map && map.get(code);
         if (!item) return;
+        if (act === 'edit') { openEditItemModal(source, code); return; }
         if (act === 'del') {
             const name = item.name, qty = item.quantity;
             if (!confirm(`確定要刪除「${name}」（共 ${qty} 件）嗎？\n刪除後仍可在「操作紀錄」復原。`)) return;
@@ -1740,10 +1774,12 @@
         const targetLabel = useLocked ? lockedBin.name : '待分箱區';
         const loc = useLocked ? AppState.lockedBinId : 'pool';
         if (targetMap.has(code)) {
-            targetMap.get(code).quantity += qty;
+            const ex = targetMap.get(code);
+            ex.quantity += qty;
+            ex.manual = true;
             showToast(`${targetLabel}已有商品 ${code}，數量增加 ${qty}。`, "success");
         } else {
-            targetMap.set(code, { code: code, barcode: 'NA', name: name, quantity: qty });
+            targetMap.set(code, { code: code, barcode: 'NA', name: name, quantity: qty, manual: true });
             showToast(`已新增到${targetLabel}：${code} / ${name}`, "success");
         }
         logEvent('手動', `手動新增「${name}」(${code}) ×${qty} → ${targetLabel}`, { kind: 'add', code: code, qty: qty, loc: loc });
@@ -1751,7 +1787,69 @@
         saveStateToLocalStorage();
         manualAddModal.style.display = 'none';
     });
-    
+
+    // --- 編輯商品（僅限手動新增的商品；不論在哪一區皆可）---
+    function openEditItemModal(source, code) {
+        const map = getItemMap(source);
+        const item = map && map.get(code);
+        if (!item) return;
+        editTargetSource = source;
+        editTargetCode = code;
+        editItemCodeInput.value = item.code;
+        editItemBarcodeInput.value = (item.barcode && item.barcode !== 'NA') ? item.barcode : '';
+        editItemNameInput.value = item.name;
+        editItemQtyInput.value = item.quantity;
+        document.getElementById('edit-item-loc').textContent = locLabel(source);
+        editItemModal.style.display = 'flex';
+        editItemNameInput.focus();
+        editItemNameInput.select();
+    }
+    function applyItemEdit() {
+        const source = editTargetSource, oldCode = editTargetCode;
+        const map = getItemMap(source);
+        const item = map && map.get(oldCode);
+        if (!item) { editItemModal.style.display = 'none'; return; }
+        let newCode = editItemCodeInput.value.trim();
+        let newName = editItemNameInput.value.trim();
+        let newBarcode = editItemBarcodeInput.value.trim();
+        const newQty = parseInt(editItemQtyInput.value, 10);
+        if (isNaN(newQty) || newQty <= 0) { showToast("數量必須大於 0！", "error"); return; }
+        if (!newCode) newCode = nextNoBarCode();
+        if (!newName) newName = nextNoName();
+        if (!newBarcode) newBarcode = 'NA';
+        if (newCode !== oldCode && map.has(newCode)) {
+            showToast(`「${locLabel(source)}」已有編號「${newCode}」的商品，請改用其他編號。`, "error");
+            return;
+        }
+        if (newCode === oldCode) {
+            item.code = newCode; item.name = newName; item.barcode = newBarcode;
+            item.quantity = newQty; item.manual = true;
+        } else {
+            // 編號變更需換 Map key；就地重建以保留原本排序位置
+            const entries = Array.from(map.entries());
+            map.clear();
+            for (const [k, v] of entries) {
+                if (k === oldCode) {
+                    map.set(newCode, { ...v, code: newCode, name: newName, barcode: newBarcode, quantity: newQty, manual: true });
+                } else {
+                    map.set(k, v);
+                }
+            }
+        }
+        const codeNote = newCode !== oldCode ? `（編號 ${oldCode} → ${newCode}）` : `(${newCode})`;
+        logEvent('手動', `編輯商品「${newName}」${codeNote} ＠${locLabel(source)}`);
+        render();
+        saveStateToLocalStorage();
+        editItemModal.style.display = 'none';
+        showToast(`已更新「${newName}」`, "success");
+    }
+    editItemCancelBtn.addEventListener('click', () => { editItemModal.style.display = 'none'; });
+    editItemConfirmBtn.addEventListener('click', applyItemEdit);
+    editItemModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); applyItemEdit(); }
+        else if (e.key === 'Escape') { editItemModal.style.display = 'none'; }
+    });
+
     function processCommand(commandText) {
         const tokens = commandText.trim().split(/\s+/).filter(Boolean);
         if (tokens.length < 3) { showToast("指令格式錯誤！請檢查格式。", 'error'); return false; }
