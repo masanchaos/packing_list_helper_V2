@@ -292,6 +292,14 @@
         .item-act:hover { opacity: 1; background-color: #e9ecef; }
         .item-act.del { color: #ff3b30; }
         .item-act.del:hover { background-color: #ffe5e3; }
+        /* 商品照片縮圖 + 已綁定狀態 */
+        .item.has-photo { display: flow-root; }
+        .item-thumb {
+            float: left; width: 44px; height: 44px; object-fit: cover;
+            border-radius: 8px; margin: 2px 10px 2px 0; cursor: pointer;
+            border: 1px solid rgba(0,0,0,.12);
+        }
+        #photo-session-qr img { display: block; }
         /* 手動新增：目的地切換（待分箱 / 鎖定箱）*/
         .dest-seg { display: flex; gap: 8px; }
         .dest-opt {
@@ -466,6 +474,7 @@
                     <label for="import-csv-input" class="button-label">還原CSV備份</label>
                     <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
                     <button id="manual-add-btn">手動新增商品</button>
+                    <button id="photo-session-btn">📷 新商品拍照</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
@@ -524,6 +533,7 @@
                     <button id="export-a4-pdf-btn">匯出 PDF (A4總表)</button>
                     <button id="export-a5-pdf-btn">匯出 PDF (A5箱貼)</button>
                     <button id="export-thermal-pdf-btn">匯出 熱感紙 (10x15)</button>
+                    <button id="export-catalog-btn">🖼️ 匯出商品圖卡（含照片）</button>
                 </div>
                 <div id="export-folder-bar" class="backup-bar" data-state="off">
                     <span id="export-folder-status">📁 匯出 CSV 目前直接下載到「下載」資料夾</span>
@@ -603,6 +613,32 @@
         </div>
     </div>
 
+    <div id="photo-session-modal" class="modal-overlay">
+        <div class="modal-content" style="width: 460px; max-width: 94vw; text-align: center;">
+            <h3>📷 新商品拍照</h3>
+            <div style="font-size:13px; color:#8e8e93; margin:6px 0 14px;">用手機掃描下方 QR，逐一拍照後會自動綁定到對應商品（兩台需同一 wifi、本機橋接需開啟）。</div>
+            <div id="photo-session-qr" style="display:flex; justify-content:center; align-items:center; min-height:200px;"></div>
+            <div id="photo-session-url" style="font-size:12px; color:#8e8e93; word-break:break-all; margin:8px 0;"></div>
+            <div id="photo-session-progress" style="font-weight:600; margin:10px 0;"></div>
+            <div id="photo-session-list" style="max-height:34vh; overflow-y:auto; text-align:left; margin:8px 0;"></div>
+            <div class="button-group" style="justify-content: center;">
+                <button id="photo-session-done-btn">完成</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="photo-view-modal" class="modal-overlay">
+        <div class="modal-content" style="width: 420px; max-width: 92vw; text-align: center;">
+            <h3>商品照片</h3>
+            <div id="photo-view-sub" style="font-size:13px; color:#8e8e93; margin-bottom:12px;"></div>
+            <img id="photo-view-img" alt="" style="max-width:100%; max-height:60vh; border-radius:10px;">
+            <div class="button-group" style="justify-content: center; margin-top:16px;">
+                <button id="photo-view-remove-btn" style="background-color:#ff3b30;">移除照片</button>
+                <button id="photo-view-close-btn">關閉</button>
+            </div>
+        </div>
+    </div>
+
     <div id="scan-log-modal" class="modal-overlay">
         <div class="modal-content" style="width: 560px; max-width: 92vw; text-align: left;">
             <h3 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -617,6 +653,7 @@
         </div>
     </div>
 
+<script src="qrcode.min.js"></script>
 <script>
     // --- 密碼門：開啟頁面需答對才能使用 ---
     (function passwordGate() {
@@ -702,6 +739,7 @@
     let editTargetSource = null, editTargetCode = null;
 
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [], importedOrders: [] };
+    let photoMem = new Map(); // 商品編號 -> 照片 dataURL（存 IndexedDB plh_photos；不寫進 CSV）
     let binCounter = 0;
     let currentSearchTerm = '';
     let currentTrashSearchTerm = '';
@@ -842,6 +880,17 @@
             actBox.appendChild(b);
         });
         itemEl.appendChild(actBox);
+        // 已綁定照片 → 顯示縮圖（點擊查看 / 移除）
+        if (photoMem.has(item.code)) {
+            const thumb = document.createElement('img');
+            thumb.className = 'item-thumb';
+            thumb.src = photoMem.get(item.code);
+            thumb.alt = ''; thumb.draggable = false;
+            thumb.title = '點擊查看 / 移除照片';
+            thumb.dataset.photoCode = item.code;
+            itemEl.insertBefore(thumb, itemEl.firstChild);
+            itemEl.classList.add('has-photo');
+        }
         if (acts.length === 3) itemEl.classList.add('acts-3');
         else if (acts.length >= 4) itemEl.classList.add('acts-4');
         return itemEl;
@@ -1082,6 +1131,7 @@
             trashSearchBox.value = '';
             currentTrashSearchTerm = '';
             localStorage.removeItem('binningToolState_v72');
+            photoMem = new Map(); phClear();
             render();
             showToast("所有資料已成功清除。", 'success');
         }
@@ -1195,6 +1245,14 @@
         }
         const target = act === 'to-recycle' ? 'recycle' : act === 'to-trash' ? 'trash' : 'pool';
         moveItemAsk(code, source, target);
+    });
+
+    // 點商品縮圖 → 檢視 / 移除照片
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('.item-thumb');
+        if (!t) return;
+        e.stopPropagation();
+        openPhotoViewer(t.dataset.photoCode);
     });
 
     // --- 處置區分頁切換（未分類 / 垃圾桶）---
@@ -1835,6 +1893,12 @@
                     map.set(k, v);
                 }
             }
+        }
+        // 編號改變 → 照片 key 也跟著搬
+        if (newCode !== oldCode && photoMem.has(oldCode)) {
+            const u = photoMem.get(oldCode);
+            photoMem.delete(oldCode); photoMem.set(newCode, u);
+            phDel(oldCode); phSet(newCode, u);
         }
         const codeNote = newCode !== oldCode ? `（編號 ${oldCode} → ${newCode}）` : `(${newCode})`;
         logEvent('手動', `編輯商品「${newName}」${codeNote} ＠${locLabel(source)}`);
@@ -2509,6 +2573,177 @@
         } catch (e) { showToast('寫入匯出資料夾失敗，改為下載。', 'error'); return false; }
     }
 
+    // ===== 新商品照片：手機掃 QR 拍照 → 經本機橋接綁定 → 匯出商品圖卡 =====
+    // 照片存在獨立的 IndexedDB（key = 商品編號），重新整理不會掉；不寫進 CSV。
+    const PH_DB = 'plh_photos', PH_STORE = 'photos';
+    function phEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function phIdbOpen() {
+        return new Promise((res, rej) => {
+            const r = indexedDB.open(PH_DB, 1);
+            r.onupgradeneeded = () => { r.result.createObjectStore(PH_STORE); };
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+        });
+    }
+    async function phSet(code, dataUrl) { const db = await phIdbOpen(); return new Promise((res, rej) => { const tx = db.transaction(PH_STORE, 'readwrite'); tx.objectStore(PH_STORE).put(dataUrl, code); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+    async function phDel(code) { const db = await phIdbOpen(); return new Promise((res) => { const tx = db.transaction(PH_STORE, 'readwrite'); tx.objectStore(PH_STORE).delete(code); tx.oncomplete = () => res(); }); }
+    async function phClear() { const db = await phIdbOpen(); return new Promise((res) => { const tx = db.transaction(PH_STORE, 'readwrite'); tx.objectStore(PH_STORE).clear(); tx.oncomplete = () => res(); }); }
+    function phAll() { return phIdbOpen().then(db => new Promise((res, rej) => { const tx = db.transaction(PH_STORE, 'readonly'); const store = tx.objectStore(PH_STORE); const kq = store.getAllKeys(), vq = store.getAll(); tx.oncomplete = () => { const m = new Map(); const ks = kq.result || [], vs = vq.result || []; ks.forEach((k, i) => m.set(k, vs[i])); res(m); }; tx.onerror = () => rej(tx.error); })); }
+
+    async function loadPhotos() { try { photoMem = await phAll(); render(); } catch (e) { /* IDB 不可用就略過 */ } }
+    async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); }
+    async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); }
+
+    function collectManualItems() {
+        const seen = new Map();
+        const consider = (m) => { if (m) m.forEach(it => { if (it.manual && !seen.has(it.code)) seen.set(it.code, it.name); }); };
+        consider(AppState.pool);
+        AppState.bins.forEach(b => consider(b.items));
+        consider(AppState.trash);
+        consider(AppState.recycle);
+        return Array.from(seen, ([code, name]) => ({ code, name }));
+    }
+    function findItemByCode(code) {
+        let it = AppState.pool.get(code); if (it) return it;
+        for (const b of AppState.bins.values()) { it = b.items.get(code); if (it) return it; }
+        return AppState.trash.get(code) || AppState.recycle.get(code) || null;
+    }
+
+    // ---- 拍照 session（QR + 即時進度）----
+    let photoSessionSid = null, photoPollTimer = null, photoBound = new Set();
+    function genSid() { return 'plh-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+    async function openPhotoSession() {
+        const items = collectManualItems();
+        if (!items.length) { showToast('目前沒有「手動新增」的新商品需要拍照。', 'info'); return; }
+        let lan;
+        try {
+            const h = await fetch(`${BRIDGE_URL}/health`, { cache: 'no-store' });
+            if (!h.ok) throw 0;
+            const lr = await fetch(`${BRIDGE_URL}/lan`, { cache: 'no-store' });
+            lan = await lr.json();
+            if (!lan || !lan.ok) throw 0;
+        } catch (e) {
+            showToast('未連到本機橋接，請先啟動 python -m src.bridge（並更新到最新版）。', 'error');
+            return;
+        }
+        photoSessionSid = genSid();
+        photoBound = new Set(photoMem.keys()); // 已綁定過的視為完成
+        try {
+            const r = await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items }) });
+            const j = await r.json();
+            if (!j.ok) throw 0;
+        } catch (e) { showToast('建立拍照工作階段失敗。', 'error'); return; }
+        const url = `http://${lan.ip}:${lan.port}/cam?sid=${encodeURIComponent(photoSessionSid)}`;
+        const qrBox = document.getElementById('photo-session-qr');
+        try {
+            const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+            qrBox.innerHTML = '<img alt="QR" style="width:220px;height:220px;image-rendering:pixelated;" src="' + qr.createDataURL(8, 4) + '">';
+        } catch (e) { qrBox.textContent = '（QR 產生失敗，請改用下方網址）'; }
+        document.getElementById('photo-session-url').textContent = url;
+        renderPhotoSession(items.map(it => ({ ...it, has_photo: photoMem.has(it.code) })));
+        document.getElementById('photo-session-modal').style.display = 'flex';
+        if (photoPollTimer) clearInterval(photoPollTimer);
+        photoPollTimer = setInterval(pollPhotoSession, 1500);
+        pollPhotoSession();
+    }
+    async function pollPhotoSession() {
+        if (!photoSessionSid) return;
+        let data;
+        try {
+            const r = await fetch(`${BRIDGE_URL}/photo/session?sid=${encodeURIComponent(photoSessionSid)}`, { cache: 'no-store' });
+            if (!r.ok) return;
+            data = await r.json();
+        } catch (e) { return; }
+        const items = (data && data.items) || [];
+        for (const it of items) {
+            if (it.has_photo && !photoBound.has(it.code)) {
+                try {
+                    const pr = await fetch(`${BRIDGE_URL}/photo?sid=${encodeURIComponent(photoSessionSid)}&code=${encodeURIComponent(it.code)}`, { cache: 'no-store' });
+                    const pj = await pr.json();
+                    if (pj.ok && pj.image) { photoBound.add(it.code); await setItemPhoto(it.code, pj.image); }
+                } catch (e) {}
+            }
+        }
+        renderPhotoSession(items);
+    }
+    function renderPhotoSession(items) {
+        const bound = items.filter(it => photoMem.has(it.code)).length;
+        const prog = document.getElementById('photo-session-progress');
+        if (prog) prog.textContent = `已綁定 ${bound} / ${items.length}`;
+        const list = document.getElementById('photo-session-list');
+        if (!list) return;
+        list.innerHTML = items.map(it => {
+            const ok = photoMem.has(it.code);
+            const right = ok
+                ? '<img src="' + photoMem.get(it.code) + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex:0 0 auto;">'
+                : '<span style="font-size:12px;color:#a15c00;flex:0 0 auto;">待拍</span>';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #eee;">
+                <span style="flex:0 0 auto;">${ok ? '✅' : '⏳'}</span>
+                <span style="flex:1;min-width:0;"><div style="font-weight:600;word-break:break-all;">${phEsc(it.code)}</div><div style="font-size:12px;color:#8e8e93;word-break:break-all;">${phEsc(it.name)}</div></span>
+                ${right}
+            </div>`;
+        }).join('');
+    }
+    function closePhotoSession() {
+        if (photoPollTimer) { clearInterval(photoPollTimer); photoPollTimer = null; }
+        photoSessionSid = null;
+        document.getElementById('photo-session-modal').style.display = 'none';
+    }
+
+    // ---- 照片檢視 / 移除 ----
+    let photoViewCode = null;
+    function openPhotoViewer(code) {
+        const url = photoMem.get(code); if (!url) return;
+        photoViewCode = code;
+        document.getElementById('photo-view-img').src = url;
+        const it = findItemByCode(code);
+        document.getElementById('photo-view-sub').textContent = it ? `${it.name}（${code}）` : code;
+        document.getElementById('photo-view-modal').style.display = 'flex';
+    }
+    function closePhotoViewer() { photoViewCode = null; document.getElementById('photo-view-modal').style.display = 'none'; }
+
+    // ---- 匯出商品圖卡（自含 HTML，照片內嵌 base64）----
+    function exportPhotoCatalog() {
+        const cards = [];
+        photoMem.forEach((img, code) => {
+            const it = findItemByCode(code);
+            if (it) cards.push({ code, name: it.name, barcode: it.barcode, qty: it.quantity, img });
+        });
+        if (!cards.length) { showToast('還沒有任何已拍照、且在清單中的商品可匯出。', 'info'); return; }
+        const orderNumber = orderNumberInput.value.trim() || 'N/A';
+        const now = new Date();
+        const dateStr = now.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const cardHtml = cards.map(c => `<div class="card">
+            <img src="${c.img}" alt="">
+            <div class="cap"><div class="nm">${phEsc(c.name)}</div>
+            <div class="meta">編號：${phEsc(c.code)}${c.barcode && c.barcode !== 'NA' ? '　條碼：' + phEsc(c.barcode) : ''}</div>
+            <div class="meta">數量：${c.qty}</div></div></div>`).join('');
+        const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品圖卡 ${phEsc(orderNumber)}</title>
+<style>
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",sans-serif;margin:0;padding:24px;background:#f4f5f7;color:#1c1c1e;}
+ h1{font-size:22px;margin:0 0 4px;}
+ .sub{color:#8e8e93;font-size:14px;margin-bottom:20px;}
+ .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+ .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+ .card img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block;background:#eee;}
+ .cap{padding:12px;}
+ .nm{font-weight:700;font-size:15px;margin-bottom:6px;word-break:break-all;}
+ .meta{font-size:13px;color:#555;word-break:break-all;}
+ @media print{body{background:#fff;padding:0;}.card{box-shadow:none;border:1px solid #ddd;break-inside:avoid;}}
+</style></head><body>
+<h1>商品圖卡</h1>
+<div class="sub">訂單號碼：${phEsc(orderNumber)}　·　${cards.length} 項　·　產生時間 ${dateStr}</div>
+<div class="grid">${cardHtml}</div>
+</body></html>`;
+        const filename = `${orderNumber}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}_商品圖卡.html`;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+        link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        showToast(`已匯出商品圖卡（${cards.length} 項）：${filename}`, 'success');
+    }
+
     function saveStateToLocalStorage() {
         localStorage.setItem('binningToolState_v72', JSON.stringify({
             pool: Array.from(AppState.pool.entries()),
@@ -2550,6 +2785,13 @@
     document.getElementById('export-folder-set-btn').addEventListener('click', pickExportFolder);
     document.getElementById('export-folder-clear-btn').addEventListener('click', clearExportFolder);
     initExportFolder();
+    // 新商品拍照 / 商品圖卡
+    document.getElementById('photo-session-btn').addEventListener('click', openPhotoSession);
+    document.getElementById('photo-session-done-btn').addEventListener('click', closePhotoSession);
+    document.getElementById('photo-view-close-btn').addEventListener('click', closePhotoViewer);
+    document.getElementById('photo-view-remove-btn').addEventListener('click', () => { if (photoViewCode && confirm('確定移除這張照片？')) { const c = photoViewCode; closePhotoViewer(); removeItemPhoto(c); showToast('已移除照片', 'info'); } });
+    document.getElementById('export-catalog-btn').addEventListener('click', exportPhotoCatalog);
+    loadPhotos();
 </script>
 </body>
 </html>
