@@ -533,7 +533,7 @@
                     <button id="export-a4-pdf-btn">匯出 PDF (A4總表)</button>
                     <button id="export-a5-pdf-btn">匯出 PDF (A5箱貼)</button>
                     <button id="export-thermal-pdf-btn">匯出 熱感紙 (10x15)</button>
-                    <button id="export-catalog-btn">🖼️ 匯出商品圖卡（含照片）</button>
+                    <button id="export-excel-btn">📊 匯出 Excel（含照片）</button>
                 </div>
                 <div id="export-folder-bar" class="backup-bar" data-state="off">
                     <span id="export-folder-status">📁 匯出 CSV 目前直接下載到「下載」資料夾</span>
@@ -2703,45 +2703,90 @@
     function closePhotoViewer() { photoViewCode = null; document.getElementById('photo-view-modal').style.display = 'none'; }
 
     // ---- 匯出商品圖卡（自含 HTML，照片內嵌 base64）----
-    function exportPhotoCatalog() {
-        const cards = [];
-        photoMem.forEach((img, code) => {
-            const it = findItemByCode(code);
-            if (it) cards.push({ code, name: it.name, barcode: it.barcode, qty: it.quantity, img });
+    // 確保 ExcelJS 已載入（~925KB，延後到第一次按「匯出 Excel」才下載，不拖慢每次開頁）
+    let _exceljsPromise = null;
+    function ensureExcelJS() {
+        if (typeof ExcelJS !== 'undefined') return Promise.resolve();
+        if (_exceljsPromise) return _exceljsPromise;
+        _exceljsPromise = new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'exceljs.min.js';
+            s.onload = () => res();
+            s.onerror = () => { _exceljsPromise = null; rej(new Error('ExcelJS 載入失敗')); };
+            document.head.appendChild(s);
         });
-        if (!cards.length) { showToast('還沒有任何已拍照、且在清單中的商品可匯出。', 'info'); return; }
-        const orderNumber = orderNumberInput.value.trim() || 'N/A';
-        const now = new Date();
-        const dateStr = now.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-        const cardHtml = cards.map(c => `<div class="card">
-            <img src="${c.img}" alt="">
-            <div class="cap"><div class="nm">${phEsc(c.name)}</div>
-            <div class="meta">編號：${phEsc(c.code)}${c.barcode && c.barcode !== 'NA' ? '　條碼：' + phEsc(c.barcode) : ''}</div>
-            <div class="meta">數量：${c.qty}</div></div></div>`).join('');
-        const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>商品圖卡 ${phEsc(orderNumber)}</title>
-<style>
- body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",sans-serif;margin:0;padding:24px;background:#f4f5f7;color:#1c1c1e;}
- h1{font-size:22px;margin:0 0 4px;}
- .sub{color:#8e8e93;font-size:14px;margin-bottom:20px;}
- .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
- .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);}
- .card img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block;background:#eee;}
- .cap{padding:12px;}
- .nm{font-weight:700;font-size:15px;margin-bottom:6px;word-break:break-all;}
- .meta{font-size:13px;color:#555;word-break:break-all;}
- @media print{body{background:#fff;padding:0;}.card{box-shadow:none;border:1px solid #ddd;break-inside:avoid;}}
-</style></head><body>
-<h1>商品圖卡</h1>
-<div class="sub">訂單號碼：${phEsc(orderNumber)}　·　${cards.length} 項　·　產生時間 ${dateStr}</div>
-<div class="grid">${cardHtml}</div>
-</body></html>`;
-        const filename = `${orderNumber}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}_商品圖卡.html`;
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-        link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        showToast(`已匯出商品圖卡（${cards.length} 項）：${filename}`, 'success');
+        return _exceljsPromise;
+    }
+
+    // 匯出 Excel（.xlsx）：整張分箱清單 + 最後一欄「照片」（有拍的列就嵌入縮圖）。
+    // CSV 仍保留（自動備份／還原 用）；此 Excel 是要給客戶看的成品。
+    async function exportPhotoExcel() {
+        if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast('沒有資料可以匯出！', 'error'); return; }
+        if (AppState.pool.size > 0) {
+            const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
+            if (!confirm(`待分箱區尚有未分類商品（${AppState.pool.size} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`)) return;
+        }
+        const btn = document.getElementById('export-excel-btn');
+        const label = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '準備中…'; }
+        try { await ensureExcelJS(); }
+        catch (e) { if (btn) { btn.disabled = false; btn.textContent = label; } showToast('Excel 函式庫載入失敗，請確認網路後重試。', 'error'); return; }
+        try {
+            const orderNumber = orderNumberInput.value.trim() || 'N/A';
+            const wb = new ExcelJS.Workbook();
+            const ws = wb.addWorksheet('分箱明細');
+            ws.columns = [
+                { header: '訂單號碼', key: 'order', width: 16 },
+                { header: '運單號', key: 'tracking', width: 16 },
+                { header: '箱號', key: 'bin', width: 7 },
+                { header: '商品編號', key: 'code', width: 16 },
+                { header: '國際條碼', key: 'barcode', width: 16 },
+                { header: '品項名稱', key: 'name', width: 32 },
+                { header: '數量', key: 'qty', width: 7 },
+                { header: '備註', key: 'note', width: 16 },
+                { header: '照片', key: 'photo', width: 16 },
+            ];
+            ws.getRow(1).font = { bold: true };
+            ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+            ws.views = [{ state: 'frozen', ySplit: 1 }];
+            const PHOTO_COL0 = 8; // 0-based index of 照片 欄
+            const toEmbed = []; // { rowNumber, dataUrl }
+            const addItemRow = (vals, code) => {
+                const row = ws.addRow(vals);
+                row.alignment = { vertical: 'middle', wrapText: true };
+                if (code && photoMem.has(code)) { toEmbed.push({ rowNumber: row.number, dataUrl: photoMem.get(code) }); row.height = 78; }
+                return row;
+            };
+            Array.from(AppState.bins.values()).forEach((bin, index) => {
+                const note = bin.note || '';
+                const binName = String(index + 1);
+                if (bin.items.size === 0) {
+                    addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note }, null);
+                } else {
+                    bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note }, item.code));
+                }
+            });
+            AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '' }, item.code));
+            toEmbed.forEach(e => {
+                const comma = e.dataUrl.indexOf(',');
+                const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
+                const ext = e.dataUrl.indexOf('image/png') >= 0 ? 'png' : 'jpeg';
+                const imgId = wb.addImage({ base64: b64, extension: ext });
+                ws.addImage(imgId, { tl: { col: PHOTO_COL0 + 0.15, row: e.rowNumber - 1 + 0.1 }, ext: { width: 92, height: 92 } });
+            });
+            const buf = await wb.xlsx.writeBuffer();
+            const now = new Date();
+            const hms = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+            const filename = `${orderNumber}_${hms}_分箱明細含照片.xlsx`;
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            showToast(`已匯出 Excel（含 ${toEmbed.length} 張照片）：${filename}`, 'success');
+        } catch (e) {
+            showToast('匯出 Excel 失敗：' + ((e && e.message) || e), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = label; }
+        }
     }
 
     function saveStateToLocalStorage() {
@@ -2790,7 +2835,7 @@
     document.getElementById('photo-session-done-btn').addEventListener('click', closePhotoSession);
     document.getElementById('photo-view-close-btn').addEventListener('click', closePhotoViewer);
     document.getElementById('photo-view-remove-btn').addEventListener('click', () => { if (photoViewCode && confirm('確定移除這張照片？')) { const c = photoViewCode; closePhotoViewer(); removeItemPhoto(c); showToast('已移除照片', 'info'); } });
-    document.getElementById('export-catalog-btn').addEventListener('click', exportPhotoCatalog);
+    document.getElementById('export-excel-btn').addEventListener('click', exportPhotoExcel);
     loadPhotos();
 </script>
 </body>
