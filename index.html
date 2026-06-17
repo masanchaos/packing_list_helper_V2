@@ -2591,8 +2591,8 @@
     function phAll() { return phIdbOpen().then(db => new Promise((res, rej) => { const tx = db.transaction(PH_STORE, 'readonly'); const store = tx.objectStore(PH_STORE); const kq = store.getAllKeys(), vq = store.getAll(); tx.oncomplete = () => { const m = new Map(); const ks = kq.result || [], vs = vq.result || []; ks.forEach((k, i) => m.set(k, vs[i])); res(m); }; tx.onerror = () => rej(tx.error); })); }
 
     async function loadPhotos() { try { photoMem = await phAll(); render(); } catch (e) { /* IDB 不可用就略過 */ } }
-    async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); }
-    async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); }
+    async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); scheduleXlsxBackup(); }
+    async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); scheduleXlsxBackup(); }
 
     function collectManualItems() {
         const seen = new Map();
@@ -2724,6 +2724,55 @@
 
     // 匯出 Excel（.xlsx）：整張分箱清單 + 最後一欄「照片」（有拍的列就嵌入縮圖）。
     // CSV 仍保留（自動備份／還原 用）；此 Excel 是要給客戶看的成品。
+    // 建立「含照片的 Excel」ArrayBuffer（手動匯出與自動備份共用）
+    async function buildPhotoExcelBuffer() {
+        await ensureExcelJS();
+        const orderNumber = orderNumberInput.value.trim() || 'N/A';
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('分箱明細');
+        ws.columns = [
+            { header: '訂單號碼', key: 'order', width: 16 },
+            { header: '運單號', key: 'tracking', width: 16 },
+            { header: '箱號', key: 'bin', width: 7 },
+            { header: '商品編號', key: 'code', width: 16 },
+            { header: '國際條碼', key: 'barcode', width: 16 },
+            { header: '品項名稱', key: 'name', width: 32 },
+            { header: '數量', key: 'qty', width: 7 },
+            { header: '備註', key: 'note', width: 16 },
+            { header: '照片', key: 'photo', width: 16 },
+        ];
+        ws.getRow(1).font = { bold: true };
+        ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.views = [{ state: 'frozen', ySplit: 1 }];
+        const PHOTO_COL0 = 8; // 0-based index of 照片 欄
+        const toEmbed = []; // { rowNumber, dataUrl }
+        const addItemRow = (vals, code) => {
+            const row = ws.addRow(vals);
+            row.alignment = { vertical: 'middle', wrapText: true };
+            if (code && photoMem.has(code)) { toEmbed.push({ rowNumber: row.number, dataUrl: photoMem.get(code) }); row.height = 78; }
+            return row;
+        };
+        Array.from(AppState.bins.values()).forEach((bin, index) => {
+            const note = bin.note || '';
+            const binName = String(index + 1);
+            if (bin.items.size === 0) {
+                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note }, null);
+            } else {
+                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note }, item.code));
+            }
+        });
+        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '' }, item.code));
+        toEmbed.forEach(e => {
+            const comma = e.dataUrl.indexOf(',');
+            const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
+            const ext = e.dataUrl.indexOf('image/png') >= 0 ? 'png' : 'jpeg';
+            const imgId = wb.addImage({ base64: b64, extension: ext });
+            ws.addImage(imgId, { tl: { col: PHOTO_COL0 + 0.15, row: e.rowNumber - 1 + 0.1 }, ext: { width: 92, height: 92 } });
+        });
+        const buf = await wb.xlsx.writeBuffer();
+        return { buf, photoCount: toEmbed.length };
+    }
+
     async function exportPhotoExcel() {
         if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast('沒有資料可以匯出！', 'error'); return; }
         if (AppState.pool.size > 0) {
@@ -2733,56 +2782,15 @@
         const btn = document.getElementById('export-excel-btn');
         const label = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = '準備中…'; }
-        try { await ensureExcelJS(); }
-        catch (e) { if (btn) { btn.disabled = false; btn.textContent = label; } showToast('Excel 函式庫載入失敗，請確認網路後重試。', 'error'); return; }
+        let result;
+        try { result = await buildPhotoExcelBuffer(); }
+        catch (e) { if (btn) { btn.disabled = false; btn.textContent = label; } showToast('Excel 產生失敗（函式庫載入或建檔）：' + ((e && e.message) || e), 'error'); return; }
         try {
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
-            const wb = new ExcelJS.Workbook();
-            const ws = wb.addWorksheet('分箱明細');
-            ws.columns = [
-                { header: '訂單號碼', key: 'order', width: 16 },
-                { header: '運單號', key: 'tracking', width: 16 },
-                { header: '箱號', key: 'bin', width: 7 },
-                { header: '商品編號', key: 'code', width: 16 },
-                { header: '國際條碼', key: 'barcode', width: 16 },
-                { header: '品項名稱', key: 'name', width: 32 },
-                { header: '數量', key: 'qty', width: 7 },
-                { header: '備註', key: 'note', width: 16 },
-                { header: '照片', key: 'photo', width: 16 },
-            ];
-            ws.getRow(1).font = { bold: true };
-            ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-            ws.views = [{ state: 'frozen', ySplit: 1 }];
-            const PHOTO_COL0 = 8; // 0-based index of 照片 欄
-            const toEmbed = []; // { rowNumber, dataUrl }
-            const addItemRow = (vals, code) => {
-                const row = ws.addRow(vals);
-                row.alignment = { vertical: 'middle', wrapText: true };
-                if (code && photoMem.has(code)) { toEmbed.push({ rowNumber: row.number, dataUrl: photoMem.get(code) }); row.height = 78; }
-                return row;
-            };
-            Array.from(AppState.bins.values()).forEach((bin, index) => {
-                const note = bin.note || '';
-                const binName = String(index + 1);
-                if (bin.items.size === 0) {
-                    addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note }, null);
-                } else {
-                    bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note }, item.code));
-                }
-            });
-            AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '' }, item.code));
-            toEmbed.forEach(e => {
-                const comma = e.dataUrl.indexOf(',');
-                const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
-                const ext = e.dataUrl.indexOf('image/png') >= 0 ? 'png' : 'jpeg';
-                const imgId = wb.addImage({ base64: b64, extension: ext });
-                ws.addImage(imgId, { tl: { col: PHOTO_COL0 + 0.15, row: e.rowNumber - 1 + 0.1 }, ext: { width: 92, height: 92 } });
-            });
-            const buf = await wb.xlsx.writeBuffer();
             const now = new Date();
             const hms = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
             const filename = `${orderNumber}_${hms}_分箱明細含照片.xlsx`;
-            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const blob = new Blob([result.buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             // 與 CSV 一致：有設定「匯出資料夾」就寫進去，沒設定或寫入失敗則下載
             let savedToFolder = false;
             if (exportDirHandle) {
@@ -2795,18 +2803,36 @@
                 } catch (e) { savedToFolder = false; }
             }
             if (savedToFolder) {
-                showToast(`已匯出到「${exportDirHandle.name}」：${filename}（含 ${toEmbed.length} 張照片）`, 'success');
+                showToast(`已匯出到「${exportDirHandle.name}」：${filename}（含 ${result.photoCount} 張照片）`, 'success');
             } else {
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-                showToast(`已匯出 Excel（含 ${toEmbed.length} 張照片）：${filename}`, 'success');
+                showToast(`已匯出 Excel（含 ${result.photoCount} 張照片）：${filename}`, 'success');
             }
         } catch (e) {
             showToast('匯出 Excel 失敗：' + ((e && e.message) || e), 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = label; }
         }
+    }
+
+    // 自動備份「含照片的 Excel」到『備份資料夾』（照片不在 CSV 備份裡 → 這裡補上保險）。
+    // 只在已啟用備份資料夾且有照片時才寫；照片變動後 debounce，離開頁面時立即寫。
+    let xlsxBackupTimer = null;
+    async function writePhotoXlsxBackup() {
+        if (!backupActive || !backupDirHandle || photoMem.size === 0) return;
+        if (AppState.bins.size === 0 && AppState.trash.size === 0) return;
+        try {
+            const { buf } = await buildPhotoExcelBuffer();
+            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const fh = await backupDirHandle.getFileHandle('packing_photos_latest.xlsx', { create: true });
+            const w = await fh.createWritable(); await w.write(blob); await w.close();
+        } catch (e) { /* 背景備份失敗就略過，不打擾使用者 */ }
+    }
+    function scheduleXlsxBackup() {
+        if (xlsxBackupTimer) clearTimeout(xlsxBackupTimer);
+        xlsxBackupTimer = setTimeout(writePhotoXlsxBackup, 12000);
     }
 
     function saveStateToLocalStorage() {
@@ -2844,8 +2870,12 @@
     document.getElementById('backup-enable-btn').addEventListener('click', reactivateBackup);
     document.getElementById('backup-now-btn').addEventListener('click', () => { if (backupActive) writeBackupNow(); });
     document.getElementById('backup-off-btn').addEventListener('click', disableBackup);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) writeBackupNow(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) { writeBackupNow(); writePhotoXlsxBackup(); } });
     initBackup();
+    // 向瀏覽器申請「持久儲存」：硬碟吃緊時不會自動清掉本站資料（localStorage / IndexedDB）
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); }).catch(() => {});
+    }
     // 匯出資料夾：按鈕事件 + 啟動偵測
     document.getElementById('export-folder-set-btn').addEventListener('click', pickExportFolder);
     document.getElementById('export-folder-clear-btn').addEventListener('click', clearExportFolder);
