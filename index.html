@@ -2782,10 +2782,26 @@
             const now = new Date();
             const hms = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
             const filename = `${orderNumber}_${hms}_分箱明細含照片.xlsx`;
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-            link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            showToast(`已匯出 Excel（含 ${toEmbed.length} 張照片）：${filename}`, 'success');
+            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            // 與 CSV 一致：有設定「匯出資料夾」就寫進去，沒設定或寫入失敗則下載
+            let savedToFolder = false;
+            if (exportDirHandle) {
+                try {
+                    if (await bkEnsurePerm(exportDirHandle, true)) {
+                        const fh = await exportDirHandle.getFileHandle(filename, { create: true });
+                        const w = await fh.createWritable(); await w.write(blob); await w.close();
+                        savedToFolder = true;
+                    }
+                } catch (e) { savedToFolder = false; }
+            }
+            if (savedToFolder) {
+                showToast(`已匯出到「${exportDirHandle.name}」：${filename}（含 ${toEmbed.length} 張照片）`, 'success');
+            } else {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                showToast(`已匯出 Excel（含 ${toEmbed.length} 張照片）：${filename}`, 'success');
+            }
         } catch (e) {
             showToast('匯出 Excel 失敗：' + ((e && e.message) || e), 'error');
         } finally {
