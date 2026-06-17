@@ -2610,7 +2610,7 @@
     }
 
     // ---- 拍照 session（QR + 即時進度）----
-    let photoSessionSid = null, photoPollTimer = null, photoBound = new Set();
+    let photoSessionSid = null, photoPollTimer = null, seenVer = new Map(); // code -> 已綁定的照片版本（重拍會變大）
     function genSid() { return 'plh-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
     async function openPhotoSession() {
         const items = collectManualItems();
@@ -2627,7 +2627,7 @@
             return;
         }
         photoSessionSid = genSid();
-        photoBound = new Set(photoMem.keys()); // 已綁定過的視為完成
+        seenVer = new Map(); // 每次開新 session 重置；改用版本判斷照片是否更新（含重拍）
         try {
             const r = await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items }) });
             const j = await r.json();
@@ -2656,12 +2656,16 @@
         } catch (e) { return; }
         const items = (data && data.items) || [];
         for (const it of items) {
-            if (it.has_photo && !photoBound.has(it.code)) {
+            const v = it.v || 0;
+            // 重拍會讓 v 變大 → 即使先前已綁定，也重新抓回覆蓋（不再只抓一次）
+            if (it.has_photo && seenVer.get(it.code) !== v) {
+                seenVer.set(it.code, v); // 樂觀標記，避免同碼在輪詢之間被重複抓
                 try {
                     const pr = await fetch(`${BRIDGE_URL}/photo?sid=${encodeURIComponent(photoSessionSid)}&code=${encodeURIComponent(it.code)}`, { cache: 'no-store' });
                     const pj = await pr.json();
-                    if (pj.ok && pj.image) { photoBound.add(it.code); await setItemPhoto(it.code, pj.image); }
-                } catch (e) {}
+                    if (pj.ok && pj.image) { await setItemPhoto(it.code, pj.image); }
+                    else { seenVer.delete(it.code); }
+                } catch (e) { seenVer.delete(it.code); }
             }
         }
         renderPhotoSession(items);
