@@ -281,9 +281,18 @@
         .item.acts-4 { padding-right: 120px; }
         .item-act.edit:hover { background-color: #e7f0ff; }
         .item-actions {
-            position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+            position: absolute; top: 7px; right: 6px;
             display: flex; gap: 1px;
         }
+        /* 每個商品自己的備註輸入框（直接在卡片上編輯，隨商品移動/儲存） */
+        .item-note-input {
+            display: block; width: 100%; box-sizing: border-box; clear: left;
+            margin-top: 8px; padding: 4px 7px; font-size: 12px; color: #555;
+            border: 1px dotted #c7c7cc; border-radius: 6px; background-color: #fcfcfd;
+            cursor: text; user-select: text;
+        }
+        .item-note-input::placeholder { color: #b8b8be; }
+        .item-note-input:focus { outline: none; border-style: solid; border-color: #007aff; background-color: #fff; }
         .item-act {
             cursor: pointer; font-size: 14px; line-height: 1; padding: 4px 5px;
             border-radius: 6px; opacity: 0.55; user-select: none;
@@ -891,6 +900,20 @@
             itemEl.insertBefore(thumb, itemEl.firstChild);
             itemEl.classList.add('has-photo');
         }
+        // 每個商品自己的備註：直接在卡片輸入；隨商品移動/存檔（input 不重繪，避免失焦）
+        const itemNoteInput = document.createElement('input');
+        itemNoteInput.type = 'text';
+        itemNoteInput.className = 'item-note-input';
+        itemNoteInput.placeholder = '商品備註…';
+        itemNoteInput.value = item.note || '';
+        itemNoteInput.draggable = false;
+        itemNoteInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        itemNoteInput.addEventListener('input', (e) => {
+            const m = getItemMap(source);
+            const it = m && m.get(item.code);
+            if (it) { it.note = e.target.value; saveStateToLocalStorage(); }
+        });
+        itemEl.appendChild(itemNoteInput);
         if (acts.length === 3) itemEl.classList.add('acts-3');
         else if (acts.length >= 4) itemEl.classList.add('acts-4');
         return itemEl;
@@ -938,6 +961,7 @@
         const existingTargetItem = targetMap.get(itemCode);
         if (existingTargetItem) {
             existingTargetItem.quantity += quantityToMove;
+            if (!existingTargetItem.note && itemToMove.note) existingTargetItem.note = itemToMove.note;
         } else {
             targetMap.set(itemCode, { ...itemToMove, quantity: quantityToMove });
         }
@@ -1693,6 +1717,7 @@
 
     // ... (Drag & Drop) ...
     document.addEventListener('dragstart', e => {
+        if (e.target.closest('.item-note-input')) { e.preventDefault(); return; } // 在備註框內打字/選字不要觸發拖曳
         const itemEl = e.target.closest('.item');
         if (itemEl) {
             const itemInfo = { code: itemEl.dataset.code, source: itemEl.dataset.source };
@@ -1976,7 +2001,7 @@
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const binsArray = Array.from(AppState.bins.values());
             
-            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註\n";
+            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
             
             // 商品編號/國際條碼若為純數字 → 用 ="..." 讓 Excel 視為文字（避免科學記號、保留前導零）
@@ -1986,16 +2011,16 @@
                 const note = bin.note || '';
                 const binName = `${index + 1}`;
                 if (bin.items.size === 0) { 
-                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note]) + "\n"; 
+                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '']) + "\n";
                 } else { 
                     bin.items.forEach(item => { 
-                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note]) + "\n"; 
+                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '']) + "\n";
                     }); 
                 }
             });
             // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '']) + "\n";
+                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '']) + "\n";
             });
             return csvContent;
         }
@@ -2060,6 +2085,7 @@
                             <td>
                                 <div class="item-name">${item.name}</div>
                                 <div class="item-code">編號: ${item.code} ${item.barcode !== 'NA' ? ' | 條碼: ' + item.barcode : ''}</div>
+                                ${item.note ? `<div class="item-note">備註: ${item.note}</div>` : ''}
                             </td>
                             <td class="item-qty">${item.quantity}</td>
                         </tr>`; 
@@ -2100,6 +2126,7 @@
                 /* 商品資訊排版 */
                 .item-name { font-size: 15px; font-weight: bold; line-height: 1.4; color: #111; }
                 .item-code { font-size: 12px; color: #666; margin-top: 4px; }
+                .item-note { font-size: 12px; color: #664d00; background: #fff8e1; padding: 2px 7px; border-radius: 4px; margin-top: 5px; display: inline-block; }
                 .item-qty { text-align: center; font-size: 20px; font-weight: bold; color: #000; }
             </style></head><body>${contentHTML}</body></html>`);
             printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); }, 800); btn.disabled=false; btn.textContent='匯出 PDF (A4總表)';
@@ -2155,6 +2182,7 @@
                             <td>
                                 <div class="item-name">${it.name}</div>
                                 <div class="item-code">編號: ${it.code}</div>
+                                ${it.note ? `<div class="item-note">備註: ${it.note}</div>` : ''}
                             </td>
                             <td class="item-qty">${it.quantity}</td>
                          </tr>`; 
@@ -2203,6 +2231,7 @@
                 /* 商品資訊排版 */
                 .item-name { font-size: 16px; font-weight: bold; line-height: 1.3; }
                 .item-code { font-size: 12px; color: #666; margin-top: 4px; }
+                .item-note { font-size: 12px; color: #664d00; background: #fff8e1; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
                 .item-qty { text-align: center; font-size: 24px; font-weight: bold; }
                 
                 /* 專業頁尾 */
@@ -2258,6 +2287,7 @@
                             <td>
                                 <div class="item-name">${it.name}</div>
                                 <div class="item-code">編號: ${it.code}</div>
+                                ${it.note ? `<div class="item-note">備註: ${it.note}</div>` : ''}
                             </td>
                             <td class="item-qty">${it.quantity}</td>
                          </tr>`; 
@@ -2296,8 +2326,9 @@
                 th.qty-col { text-align: center; width: 35px; }
                 td { border-bottom: 1px dashed #ccc; padding: 6px 0; vertical-align: middle; }
                 tr:nth-child(even) td { background-color: #fafafa; } /* 斑馬紋 */
-                .item-name { font-size: 13px; font-weight: bold; line-height: 1.2; } 
-                .item-code { font-size: 9px; color: #666; margin-top: 2px; } 
+                .item-name { font-size: 13px; font-weight: bold; line-height: 1.2; }
+                .item-code { font-size: 9px; color: #666; margin-top: 2px; }
+                .item-note { font-size: 10px; color: #664d00; background: #fff8e1; padding: 1px 5px; border-radius: 3px; margin-top: 2px; display: inline-block; }
                 .item-qty { text-align: center; font-size: 16px; font-weight: bold; }
                 .footer { margin-top: auto; text-align: center; font-size: 14px; font-weight: 900; border-top: 2px solid #000; padding-top: 5px; letter-spacing: 1px; }
             </style></head><body>${contentHTML}</body></html>`); 
@@ -2345,7 +2376,7 @@
             const header = parseCsvRow(rows[0]).map(h => h.trim());
             // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
-            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1);
+            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
             // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
             const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
@@ -2362,12 +2393,14 @@
                 const bId = `bin-${bNum}`;
 
                 let note = '';
+                let itemNote = '';
                 let itemCode = '';
                 let itemBarcode = '';
                 let itemName = '';
                 let itemQty = 0;
 
                 if (cNote >= 0) note = cols[cNote] || '';
+                if (cItemNote >= 0) itemNote = cols[cItemNote] || '';
                 itemCode = unwrapExcelText(cols[cCode]);
                 itemBarcode = unwrapExcelText(cols[cBarcode]);
                 itemName = cols[cName] || '';
@@ -2386,7 +2419,7 @@
                 }
 
                 if(itemName !== '此箱無商品' && itemCode) {
-                    AppState.bins.get(bId).items.set(itemCode, { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty });
+                    AppState.bins.get(bId).items.set(itemCode, { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty, note: itemNote });
                 }
             }
             binCounter=maxBin;
@@ -2739,12 +2772,13 @@
             { header: '品項名稱', key: 'name', width: 32 },
             { header: '數量', key: 'qty', width: 7 },
             { header: '備註', key: 'note', width: 16 },
+            { header: '商品備註', key: 'itemNote', width: 18 },
             { header: '照片', key: 'photo', width: 16 },
         ];
         ws.getRow(1).font = { bold: true };
         ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
         ws.views = [{ state: 'frozen', ySplit: 1 }];
-        const PHOTO_COL0 = 8; // 0-based index of 照片 欄
+        const PHOTO_COL0 = 9; // 0-based index of 照片 欄（前面多插了「商品備註」欄）
         const toEmbed = []; // { rowNumber, dataUrl }
         const addItemRow = (vals, code) => {
             const row = ws.addRow(vals);
@@ -2756,12 +2790,12 @@
             const note = bin.note || '';
             const binName = String(index + 1);
             if (bin.items.size === 0) {
-                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note }, null);
+                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '' }, null);
             } else {
-                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note }, item.code));
+                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '' }, item.code));
             }
         });
-        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '' }, item.code));
+        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '' }, item.code));
         toEmbed.forEach(e => {
             const comma = e.dataUrl.indexOf(',');
             const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
