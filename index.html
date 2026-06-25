@@ -906,8 +906,9 @@
         itemNoteInput.className = 'item-note-input';
         itemNoteInput.placeholder = '商品備註…';
         itemNoteInput.value = item.note || '';
-        itemNoteInput.draggable = false;
-        itemNoteInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        // 整張卡片（含備註列）皆可拖曳；只有「點進備註框編輯時」才暫停卡片拖曳，避免打字/選字誤觸拖曳
+        itemNoteInput.addEventListener('focus', () => { itemEl.draggable = false; });
+        itemNoteInput.addEventListener('blur',  () => { itemEl.draggable = true; });
         itemNoteInput.addEventListener('input', (e) => {
             const m = getItemMap(source);
             const it = m && m.get(item.code);
@@ -1717,7 +1718,6 @@
 
     // ... (Drag & Drop) ...
     document.addEventListener('dragstart', e => {
-        if (e.target.closest('.item-note-input')) { e.preventDefault(); return; } // 在備註框內打字/選字不要觸發拖曳
         const itemEl = e.target.closest('.item');
         if (itemEl) {
             const itemInfo = { code: itemEl.dataset.code, source: itemEl.dataset.source };
