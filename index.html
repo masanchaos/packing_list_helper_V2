@@ -160,6 +160,8 @@
         .item { background-color: #e9f7fd; border: 1px solid #bde0fe; border-radius: 4px; padding: 10px; margin-bottom: 10px; cursor: grab; user-select: none; transition: opacity 0.2s; }
         .item:active { cursor: grabbing; }
         .item.dragging { opacity: 0.5; }
+        /* 拖曳進行中：輸入框不攔截指標，讓 drop 能落到 .bin/待分箱/處置區。空箱幾乎被「運單號·備註」框蓋滿，原生 input 會吃掉 drop 事件→放不進去，這條修掉它 */
+        body.dragging-active input, body.dragging-active textarea { pointer-events: none; }
         .item strong { color: #0d6efd; }
         .item .details { font-size: 12px; color: #555; }
         .bin { background-color: #f8f9fa; border: 2px dashed #ccc; border-radius: 8px; padding: 10px; margin-bottom: 20px; min-height: 100px; transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s; }
@@ -1723,10 +1725,11 @@
             const itemInfo = { code: itemEl.dataset.code, source: itemEl.dataset.source };
             e.dataTransfer.setData('application/json', JSON.stringify(itemInfo));
             e.dataTransfer.effectAllowed = 'move';
+            document.body.classList.add('dragging-active'); // 讓箱內輸入框在拖曳時穿透，drop 才能落到 .bin
             setTimeout(() => itemEl.classList.add('dragging'), 0);
         }
     });
-    document.addEventListener('dragend', e => { const el = e.target.closest('.item'); if(el) el.classList.remove('dragging'); });
+    document.addEventListener('dragend', e => { document.body.classList.remove('dragging-active'); const el = e.target.closest('.item'); if(el) el.classList.remove('dragging'); });
     document.addEventListener('dragover', e => {
         e.preventDefault();
         const targetBin = e.target.closest('.bin');
@@ -1748,6 +1751,7 @@
     });
     document.addEventListener('drop', e => {
         e.preventDefault();
+        document.body.classList.remove('dragging-active');
         document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         itemListContent.style.borderColor = 'transparent';
         const targetBinEl = e.target.closest('.bin');
