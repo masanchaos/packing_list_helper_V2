@@ -164,6 +164,9 @@
         body.dragging-active input, body.dragging-active textarea { pointer-events: none; }
         .item strong { color: #0d6efd; }
         .item .details { font-size: 12px; color: #555; }
+        /* 手動新增商品標記：卡片左側橘色條 + 「手動」小標籤 */
+        .manual-badge { display: inline-block; margin-left: 6px; padding: 0 6px; font-size: 11px; font-weight: 600; line-height: 17px; color: #fff; background: #ff9500; border-radius: 9px; vertical-align: middle; }
+        .item.is-manual { border-left: 4px solid #ff9500; }
         .bin { background-color: #f8f9fa; border: 2px dashed #ccc; border-radius: 8px; padding: 10px; margin-bottom: 20px; min-height: 100px; transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s; }
         .bin h3 { margin: 0 0 10px 0; color: #666; display: flex; justify-content: space-between; align-items: center; }
         .bin-actions { display: flex; align-items: center; gap: 8px; }
@@ -866,7 +869,9 @@
         itemEl.draggable = true;
         itemEl.dataset.code = item.code;
         itemEl.dataset.source = source;
-        itemEl.innerHTML = `<strong>${item.name}</strong><div class="details">(編號: ${item.code}, 條碼: ${item.barcode}, 數量: ${item.quantity})</div>`;
+        if (item.manual) itemEl.classList.add('is-manual');
+        const manualBadge = item.manual ? ` <span class="manual-badge" title="手動新增的商品">手動</span>` : '';
+        itemEl.innerHTML = `<strong>${item.name}${manualBadge}</strong><div class="details">(編號: ${item.code}, 條碼: ${item.barcode}, 數量: ${item.quantity})</div>`;
         // 情境操作鈕：依商品所在區決定可去哪
         let acts;
         if (source === 'recycle') {
@@ -2005,7 +2010,7 @@
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const binsArray = Array.from(AppState.bins.values());
             
-            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註\n";
+            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註,手動新增\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
             
             // 商品編號/國際條碼若為純數字 → 用 ="..." 讓 Excel 視為文字（避免科學記號、保留前導零）
@@ -2014,17 +2019,17 @@
             binsArray.forEach((bin, index) => {
                 const note = bin.note || '';
                 const binName = `${index + 1}`;
-                if (bin.items.size === 0) { 
-                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '']) + "\n";
-                } else { 
-                    bin.items.forEach(item => { 
-                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '']) + "\n";
-                    }); 
+                if (bin.items.size === 0) {
+                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '', '']) + "\n";
+                } else {
+                    bin.items.forEach(item => {
+                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '', item.manual ? '是' : '']) + "\n";
+                    });
                 }
             });
             // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '']) + "\n";
+                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '']) + "\n";
             });
             return csvContent;
         }
@@ -2380,7 +2385,7 @@
             const header = parseCsvRow(rows[0]).map(h => h.trim());
             // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
-            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1);
+            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
             // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
             const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
@@ -2423,7 +2428,9 @@
                 }
 
                 if(itemName !== '此箱無商品' && itemCode) {
-                    AppState.bins.get(bId).items.set(itemCode, { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty, note: itemNote });
+                    const restored = { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty, note: itemNote };
+                    if (cManual >= 0 && (cols[cManual] || '').trim() === '是') restored.manual = true;
+                    AppState.bins.get(bId).items.set(itemCode, restored);
                 }
             }
             binCounter=maxBin;
@@ -2777,12 +2784,13 @@
             { header: '數量', key: 'qty', width: 7 },
             { header: '備註', key: 'note', width: 16 },
             { header: '商品備註', key: 'itemNote', width: 18 },
+            { header: '手動新增', key: 'manual', width: 10 },
             { header: '照片', key: 'photo', width: 16 },
         ];
         ws.getRow(1).font = { bold: true };
         ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
         ws.views = [{ state: 'frozen', ySplit: 1 }];
-        const PHOTO_COL0 = 9; // 0-based index of 照片 欄（前面多插了「商品備註」欄）
+        const PHOTO_COL0 = 10; // 0-based index of 照片 欄（前面多插了「商品備註」「手動新增」欄）
         const toEmbed = []; // { rowNumber, dataUrl }
         const addItemRow = (vals, code) => {
             const row = ws.addRow(vals);
@@ -2794,12 +2802,12 @@
             const note = bin.note || '';
             const binName = String(index + 1);
             if (bin.items.size === 0) {
-                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '' }, null);
+                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '', manual: '' }, null);
             } else {
-                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '' }, item.code));
+                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
             }
         });
-        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '' }, item.code));
+        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
         toEmbed.forEach(e => {
             const comma = e.dataUrl.indexOf(',');
             const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
