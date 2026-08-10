@@ -596,10 +596,6 @@
             </div>
             <label for="new-item-qty">數量:</label>
             <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 12px;" min="1" value="1">
-            <label style="display:flex; align-items:center; gap:6px; margin-bottom:12px; font-weight:normal; cursor:pointer;">
-                <input type="checkbox" id="new-item-qr-print" style="margin:0; width:auto;">
-                🖨️ 新增後輸出商品編號 QRCode 標籤（40×30mm）
-            </label>
             <label>加到:</label>
             <div id="manual-add-dest" class="dest-seg" style="margin: 4px 0 20px;">
                 <button type="button" class="dest-opt active" data-dest="pool">待分箱區</button>
@@ -607,7 +603,8 @@
             </div>
             <div class="button-group" style="justify-content: center;">
                 <button id="manual-add-confirm-btn">確認新增</button>
-                <button id="manual-add-qr-btn" type="button">🖨️ 只印 QRCode</button>
+                <button id="manual-add-qr-btn" type="button">🖨️ 列印QRCODE</button>
+                <button id="manual-add-photo-btn" type="button">📷 幫商品拍照</button>
                 <button id="manual-add-cancel-btn">取消</button>
             </div>
         </div>
@@ -1871,11 +1868,16 @@
     newItemCodeAutoBtn.addEventListener('click', () => { newItemCodeInput.value = applyItemPrefix(nextNoBarCode()); newItemNameInput.focus(); });
     newItemNameAutoBtn.addEventListener('click', () => { newItemNameInput.value = applyItemPrefix(nextNoName()); newItemQtyInput.focus(); });
     manualAddCancelBtn.addEventListener('click', () => { manualAddModal.style.display = 'none'; });
-    // 只印 QRCode：不新增商品，直接用目前的前綴+編號輸出標籤（編號留空就自動給 NoBarCode 序號）
+    // 列印 QRCode：不新增商品，直接用目前的前綴+編號輸出標籤（編號留空就自動給 NoBarCode 序號）
     document.getElementById('manual-add-qr-btn').addEventListener('click', () => {
         let code = newItemCodeInput.value.trim();
         if (!code) { code = nextNoBarCode(); newItemCodeInput.value = applyItemPrefix(code); }
         printCodeQrLabel(applyItemPrefix(code));
+    });
+    // 幫商品拍照：關閉本視窗，開啟既有的「新商品拍照」流程（手機掃 QR 拍照綁定）
+    document.getElementById('manual-add-photo-btn').addEventListener('click', () => {
+        manualAddModal.style.display = 'none';
+        openPhotoSession();
     });
     manualAddConfirmBtn.addEventListener('click', () => {
         let code = newItemCodeInput.value.trim();
@@ -1909,8 +1911,6 @@
         render();
         saveStateToLocalStorage();
         manualAddModal.style.display = 'none';
-        // 勾選時輸出商品編號 QRCode 標籤（勾選狀態保留給下一筆）
-        if (document.getElementById('new-item-qr-print').checked) printCodeQrLabel(code);
     });
 
     // --- 編輯商品（僅限手動新增的商品；不論在哪一區皆可）---
