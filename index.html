@@ -596,6 +596,10 @@
             </div>
             <label for="new-item-qty">數量:</label>
             <input type="number" id="new-item-qty" style="width: 100%; margin-bottom: 12px;" min="1" value="1">
+            <label style="display:flex; align-items:center; gap:6px; margin-bottom:12px; font-weight:normal; cursor:pointer;">
+                <input type="checkbox" id="new-item-qr-print" style="margin:0; width:auto;">
+                🖨️ 新增後輸出商品編號 QRCode 標籤（40×30mm）
+            </label>
             <label>加到:</label>
             <div id="manual-add-dest" class="dest-seg" style="margin: 4px 0 20px;">
                 <button type="button" class="dest-opt active" data-dest="pool">待分箱區</button>
@@ -1835,6 +1839,28 @@
         manualAddModal.style.display = 'flex';
         newItemCodeInput.focus();
     });
+    // --- 商品編號 QRCode 標籤列印（40mm × 30mm 熱感貼紙）---
+    function printCodeQrLabel(code) {
+        let img;
+        try {
+            const qr = qrcode(0, 'M'); qr.addData(code); qr.make();
+            img = qr.createDataURL(8, 0);
+        } catch (e) { showToast('QRCode 產生失敗（編號過長或含不支援字元）', 'error'); return; }
+        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const w = window.open('', '_blank');
+        if (!w) { showToast('無法打開列印視窗（請允許彈出視窗）', 'error'); return; }
+        w.document.write(`<html><head><title>${esc(code)}</title><style>
+            @page { size: 40mm 30mm; margin: 0; }
+            html, body { margin: 0; padding: 0; }
+            .label { width: 40mm; height: 30mm; box-sizing: border-box; padding: 1mm; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+            .label img { width: 20mm; height: 20mm; image-rendering: pixelated; }
+            .code { font-family: Arial, 'Microsoft JhengHei', sans-serif; font-size: 8pt; font-weight: bold; text-align: center; word-break: break-all; line-height: 1.1; max-width: 38mm; margin-top: 0.5mm; }
+        </style></head><body>
+            <div class="label"><img src="${img}"><div class="code">${esc(code)}</div></div>
+        </body></html>`);
+        w.document.close();
+        setTimeout(() => { w.print(); }, 400);
+    }
     newItemCodeAutoBtn.addEventListener('click', () => { newItemCodeInput.value = nextNoBarCode(); newItemNameInput.focus(); });
     newItemNameAutoBtn.addEventListener('click', () => { newItemNameInput.value = nextNoName(); newItemQtyInput.focus(); });
     manualAddCancelBtn.addEventListener('click', () => { manualAddModal.style.display = 'none'; });
@@ -1870,6 +1896,8 @@
         render();
         saveStateToLocalStorage();
         manualAddModal.style.display = 'none';
+        // 勾選時輸出商品編號 QRCode 標籤（勾選狀態保留給下一筆）
+        if (document.getElementById('new-item-qr-print').checked) printCodeQrLabel(code);
     });
 
     // --- 編輯商品（僅限手動新增的商品；不論在哪一區皆可）---
