@@ -7,8 +7,6 @@
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
-        /* 密碼門：未通過前隱藏整個 App */
-        body.locked .container { display: none; }
         .container { display: flex; width: 100%; padding: 20px; gap: 20px; }
         .panel { background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; /* 防止面板本身撐開 */ }
         #control-container { flex: 1; min-width: 280px; }
@@ -451,7 +449,7 @@
         .modal-content { background-color: #f7f7fa; }
     </style>
 </head>
-<body class="locked">
+<body>
     <div class="container">
         <div id="control-container" class="panel">
             <div class="order-input"><label for="order-number-input">訂單號碼:</label><input type="text" id="order-number-input" placeholder="請在此輸入本次作業的訂單號碼"></div>
@@ -584,6 +582,8 @@
     <div id="manual-add-modal" class="modal-overlay">
         <div class="modal-content" style="width: 400px; text-align: left;">
             <h3>新增商品</h3>
+            <label for="new-item-prefix">自訂前綴（選填）:</label>
+            <input type="text" id="new-item-prefix" style="width:100%; margin-bottom:10px;" placeholder="例：ABCD → 編號與名稱都會加上 ABCD">
             <label for="new-item-code">商品編號:</label>
             <div style="display:flex; gap:6px; margin-bottom:10px;">
                 <input type="text" id="new-item-code" style="flex:1; min-width:0; margin:0;" placeholder="留空或按右鈕 = NoBarCode">
@@ -669,18 +669,6 @@
 
 <script src="qrcode.min.js"></script>
 <script>
-    // --- 密碼門：開啟頁面需答對才能使用 ---
-    (function passwordGate() {
-        while (true) {
-            const ans = prompt('輸入偶數');
-            if (ans !== null && ans.trim() === '1357') {
-                document.body.classList.remove('locked');
-                break;
-            }
-            alert('答案錯誤，請再試一次');
-        }
-    })();
-
     // --- DOM 元素獲取 ---
     const orderNumberInput = document.getElementById('order-number-input');
     const dataInput = document.getElementById('data-input');
@@ -737,6 +725,7 @@
     const manualAddModal = document.getElementById('manual-add-modal');
     const manualAddConfirmBtn = document.getElementById('manual-add-confirm-btn');
     const manualAddCancelBtn = document.getElementById('manual-add-cancel-btn');
+    const newItemPrefixInput = document.getElementById('new-item-prefix');
     const newItemCodeInput = document.getElementById('new-item-code');
     const newItemNameInput = document.getElementById('new-item-name');
     const newItemQtyInput = document.getElementById('new-item-qty');
@@ -1857,6 +1846,9 @@
         // 規則：商品一定要有編號與名稱；留空就自動給 NoBarCode/NoName（也可自行填寫）
         if (!code) code = nextNoBarCode();
         if (!name) name = nextNoName();
+        // 自訂前綴：編號與名稱都加上（前綴留給下一筆繼續用，方便連續新增）
+        const prefix = newItemPrefixInput.value.trim();
+        if (prefix) { code = prefix + code; name = prefix + name; }
         // 目的地：待分箱區 或 已鎖定的箱子
         const destBtn = document.querySelector('#manual-add-dest .dest-opt.active');
         const wantLocked = destBtn && destBtn.dataset.dest === 'locked';
