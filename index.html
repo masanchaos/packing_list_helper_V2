@@ -607,6 +607,7 @@
             </div>
             <div class="button-group" style="justify-content: center;">
                 <button id="manual-add-confirm-btn">確認新增</button>
+                <button id="manual-add-qr-btn" type="button">🖨️ 只印 QRCode</button>
                 <button id="manual-add-cancel-btn">取消</button>
             </div>
         </div>
@@ -1861,9 +1862,21 @@
         w.document.close();
         setTimeout(() => { w.print(); }, 400);
     }
-    newItemCodeAutoBtn.addEventListener('click', () => { newItemCodeInput.value = nextNoBarCode(); newItemNameInput.focus(); });
-    newItemNameAutoBtn.addEventListener('click', () => { newItemNameInput.value = nextNoName(); newItemQtyInput.focus(); });
+    // 前綴規則：有填前綴時，編號/名稱一律變成「前綴_值」；已帶前綴的值不重複加
+    function applyItemPrefix(v) {
+        const p = newItemPrefixInput.value.trim();
+        if (!p) return v;
+        return v.startsWith(p + '_') ? v : p + '_' + v;
+    }
+    newItemCodeAutoBtn.addEventListener('click', () => { newItemCodeInput.value = applyItemPrefix(nextNoBarCode()); newItemNameInput.focus(); });
+    newItemNameAutoBtn.addEventListener('click', () => { newItemNameInput.value = applyItemPrefix(nextNoName()); newItemQtyInput.focus(); });
     manualAddCancelBtn.addEventListener('click', () => { manualAddModal.style.display = 'none'; });
+    // 只印 QRCode：不新增商品，直接用目前的前綴+編號輸出標籤（編號留空就自動給 NoBarCode 序號）
+    document.getElementById('manual-add-qr-btn').addEventListener('click', () => {
+        let code = newItemCodeInput.value.trim();
+        if (!code) { code = nextNoBarCode(); newItemCodeInput.value = applyItemPrefix(code); }
+        printCodeQrLabel(applyItemPrefix(code));
+    });
     manualAddConfirmBtn.addEventListener('click', () => {
         let code = newItemCodeInput.value.trim();
         let name = newItemNameInput.value.trim();
@@ -1872,9 +1885,9 @@
         // 規則：商品一定要有編號與名稱；留空就自動給 NoBarCode/NoName（也可自行填寫）
         if (!code) code = nextNoBarCode();
         if (!name) name = nextNoName();
-        // 自訂前綴：編號與名稱都加上（前綴留給下一筆繼續用，方便連續新增）
-        const prefix = newItemPrefixInput.value.trim();
-        if (prefix) { code = prefix + code; name = prefix + name; }
+        // 自訂前綴：編號與名稱都變成「前綴_值」（前綴留給下一筆繼續用，方便連續新增）
+        code = applyItemPrefix(code);
+        name = applyItemPrefix(name);
         // 目的地：待分箱區 或 已鎖定的箱子
         const destBtn = document.querySelector('#manual-add-dest .dest-opt.active');
         const wantLocked = destBtn && destBtn.dataset.dest === 'locked';
