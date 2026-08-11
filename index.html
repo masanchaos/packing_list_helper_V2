@@ -2044,7 +2044,7 @@
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
             const binsArray = Array.from(AppState.bins.values());
             
-            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註,手動新增\n";
+            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註,手動新增,箱已完成\n";
             const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
             
             // 商品編號/國際條碼若為純數字 → 用 ="..." 讓 Excel 視為文字（避免科學記號、保留前導零）
@@ -2053,21 +2053,22 @@
             binsArray.forEach((bin, index) => {
                 const note = bin.note || '';
                 const binName = `${index + 1}`;
+                const done = bin.completed ? '是' : '';
                 if (bin.items.size === 0) {
-                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '', '']) + "\n";
+                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '', '', done]) + "\n";
                 } else {
                     bin.items.forEach(item => {
-                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '', item.manual ? '是' : '']) + "\n";
+                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '', item.manual ? '是' : '', done]) + "\n";
                     });
                 }
             });
             // 未能分類商品區也一併輸出（箱號標示為「未分類」）
             AppState.trash.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '']) + "\n";
+                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '', '']) + "\n";
             });
             // 待分箱區也一併輸出（箱號標示為「待分箱」）→ 還原備份時才能還原待分箱區
             AppState.pool.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '待分箱', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '']) + "\n";
+                csvContent += fmtRow([orderNumber, '', '待分箱', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '', '']) + "\n";
             });
             return csvContent;
         }
@@ -2427,7 +2428,7 @@
             // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
             const cOrder = col('訂單號碼', 0);
-            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1);
+            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1), cDone = col('箱已完成', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
             // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
             const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
@@ -2470,16 +2471,18 @@
                 itemName = cols[cName] || '';
                 itemQty = parseInt(cols[cQty]) || 0;
 
+                const rowDone = cDone >= 0 && (cols[cDone] || '').trim() === '是';
                 if(!AppState.bins.has(bId)) {
-                    AppState.bins.set(bId, { 
-                        name: `第 ${bNum} 箱`, 
+                    AppState.bins.set(bId, {
+                        name: `第 ${bNum} 箱`,
                         tracking: cols[cTrack] || '',
-                        note: note, 
-                        items: new Map(), 
-                        completed: false 
+                        note: note,
+                        items: new Map(),
+                        completed: rowDone
                     });
                 } else {
                     if(note) AppState.bins.get(bId).note = note;
+                    if(rowDone) AppState.bins.get(bId).completed = true;
                 }
 
                 if(itemName !== '此箱無商品' && itemCode) {
