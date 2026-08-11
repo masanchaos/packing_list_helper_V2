@@ -605,7 +605,7 @@
             <div class="button-group" style="justify-content: center;">
                 <button id="manual-add-confirm-btn">確認新增</button>
                 <button id="manual-add-qr-btn" type="button">🖨️ 列印QRCODE</button>
-                <button id="manual-add-photo-btn" type="button">📷 幫商品拍照</button>
+                <button id="manual-add-photo-btn" type="button" title="先新增這筆商品，接著直接開手機拍照 QR">📷 新增並拍照</button>
                 <button id="manual-add-cancel-btn">取消</button>
             </div>
         </div>
@@ -1875,16 +1875,12 @@
         if (!code) { code = nextNoBarCode(); newItemCodeInput.value = applyItemPrefix(code); }
         printCodeQrLabel(applyItemPrefix(code));
     });
-    // 幫商品拍照：關閉本視窗，開啟既有的「新商品拍照」流程（手機掃 QR 拍照綁定）
-    document.getElementById('manual-add-photo-btn').addEventListener('click', () => {
-        manualAddModal.style.display = 'none';
-        openPhotoSession();
-    });
-    manualAddConfirmBtn.addEventListener('click', () => {
+    // 手動新增本體：驗證+寫入，成功回傳商品編號、失敗回傳 null（確認新增 / 新增並拍照 共用）
+    function doManualAdd() {
         let code = newItemCodeInput.value.trim();
         let name = newItemNameInput.value.trim();
         const qty = parseInt(newItemQtyInput.value, 10);
-        if (isNaN(qty) || qty <= 0) { showToast("數量必須大於 0！", "error"); return; }
+        if (isNaN(qty) || qty <= 0) { showToast("數量必須大於 0！", "error"); return null; }
         // 規則：商品一定要有編號與名稱；留空就自動給 NoBarCode/NoName（也可自行填寫）
         if (!code) code = nextNoBarCode();
         if (!name) name = nextNoName();
@@ -1911,7 +1907,17 @@
         logEvent('手動', `手動新增「${name}」(${code}) ×${qty} → ${targetLabel}`, { kind: 'add', code: code, qty: qty, loc: loc });
         render();
         saveStateToLocalStorage();
+        return code;
+    }
+    manualAddConfirmBtn.addEventListener('click', () => {
+        if (doManualAdd() === null) return;
         manualAddModal.style.display = 'none';
+    });
+    // 新增並拍照：先把表單這筆商品新增進去，接著直接開拍照 QR（新增的同時就拍好照）
+    document.getElementById('manual-add-photo-btn').addEventListener('click', () => {
+        if (doManualAdd() === null) return;
+        manualAddModal.style.display = 'none';
+        openPhotoSession();
     });
 
     // --- 編輯商品（僅限手動新增的商品；不論在哪一區皆可）---
