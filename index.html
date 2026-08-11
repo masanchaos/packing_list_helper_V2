@@ -2631,14 +2631,14 @@
     function downloadBackupNow() {
         if (!downloadsFallback) return;
         if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) return; // 空資料不下載
-        if (typeof window.__plhBuildCSV !== 'function') return;
         try {
+            // 下載備份改存進度檔(JSON)：唯一目的是救資料，進度檔可 100% 還原（含垃圾桶/操作紀錄），CSV 做不到
             const now = new Date();
             const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
             const order = orderNumberInput.value.trim() || 'NoOrder';
             const link = document.createElement('a');
-            link.href = URL.createObjectURL(new Blob([window.__plhBuildCSV()], { type: 'text/csv;charset=utf-8;' }));
-            link.download = `${order}_自動備份_${ts}.csv`;
+            link.href = URL.createObjectURL(new Blob([JSON.stringify(buildProgressSnapshot())], { type: 'application/json' }));
+            link.download = `${order}_自動備份_${ts}_進度.json`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             updateBackupUI('downloads', { time: now });
         } catch (e) {}
