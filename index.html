@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧拖拽分箱工具 (V95 - 檢查模式增強版)</title>
+    <title>智慧拖拽分箱工具 (V96 - 進度保存版)</title>
     <style>
         /* --- 全局與佈局 --- */
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft JhengHei', sans-serif; display: flex; height: 100vh; margin: 0; background-color: #f4f7f6; }
@@ -483,8 +483,9 @@
                 <div class="button-group">
                     <button id="mode-switch-btn">目前模式：出貨模式</button>
                     <button id="parse-btn">解析資料</button>
-                    <label for="import-csv-input" class="button-label">還原CSV備份</label>
-                    <input type="file" id="import-csv-input" accept=".csv, text/csv" style="display: none;">
+                    <button id="save-progress-btn" type="button" title="把目前完整進度（待分箱區、箱子、未分類、垃圾桶、操作紀錄）存成一個進度檔">💾 保存進度</button>
+                    <label for="import-csv-input" class="button-label" title="選擇進度檔(.json)或舊的 CSV 備份還原">還原備份</label>
+                    <input type="file" id="import-csv-input" accept=".csv,.json,text/csv,application/json" style="display: none;">
                     <button id="manual-add-btn">手動新增商品</button>
                     <button id="photo-session-btn">📷 新商品拍照</button>
                     <button id="clear-data-btn">清除全部資料</button>
@@ -2036,7 +2037,7 @@
             const n = AppState.pool.size;
             if (n === 0) return true;
             const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
-            return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`);
+            return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？\n（CSV 會以「待分箱」列一併寫入，還原備份時可還原）`);
         }
         // 產生匯出用 CSV 字串（手動匯出與自動備份共用；垃圾桶不輸出）
         function buildExportCSV() {
@@ -2064,11 +2065,15 @@
             AppState.trash.forEach(item => {
                 csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '']) + "\n";
             });
+            // 待分箱區也一併輸出（箱號標示為「待分箱」）→ 還原備份時才能還原待分箱區
+            AppState.pool.forEach(item => {
+                csvContent += fmtRow([orderNumber, '', '待分箱', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '']) + "\n";
+            });
             return csvContent;
         }
         window.__plhBuildCSV = buildExportCSV; // 供外層「自動備份」取用同一份 CSV 產生器
         async function exportCSV() {
-            if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
+            if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
             if (!poolNotEmptyOk()) return;
             const csv = buildExportCSV();
             const filename = generateExportFilename('.csv');
@@ -2410,24 +2415,41 @@
         if (!confirm("確定還原？目前的資料將被清除。")) { event.target.value = ''; return; }
         const reader = new FileReader();
         reader.onload = function(e) {
-            const rows = e.target.result.split('\n').filter(r => r.trim() !== '');
+            const text = e.target.result;
+            // 進度檔（JSON）走完整還原；CSV 走表格解析
+            if (/\.json$/i.test(file.name) || text.trim().startsWith('{')) { restoreProgressFromText(text); return; }
+            const rows = text.split('\n').filter(r => r.trim() !== '');
             if(rows.length <= 1) return;
-            AppState.pool.clear(); AppState.bins.clear(); binCounter=0; AppState.lockedBinId=null;
+            AppState.pool.clear(); AppState.bins.clear(); AppState.trash.clear(); binCounter=0; AppState.lockedBinId=null;
             let maxBin=0;
 
             const header = parseCsvRow(rows[0]).map(h => h.trim());
             // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
+            const cOrder = col('訂單號碼', 0);
             const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
             // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
             const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
-            
+
             for(let i=1; i<rows.length; i++){
-                const cols = parseCsvRow(rows[i]); 
-                const binName = cols[cBin];
+                const cols = parseCsvRow(rows[i]);
+                const binName = (cols[cBin] || '').trim();
                 if(!binName) continue;
-                
+
+                const rowOrder = (cols[cOrder] || '').trim();
+                if (rowOrder && rowOrder !== 'N/A' && !orderNumberInput.value.trim()) orderNumberInput.value = rowOrder;
+
+                // 「待分箱」「未分類」不是箱子：分別還原到待分箱區 / 未能分類商品區
+                if (binName === '待分箱' || binName === '未分類') {
+                    const code = unwrapExcelText(cols[cCode]);
+                    if (!code) continue;
+                    const it = { code, barcode: unwrapExcelText(cols[cBarcode]), name: cols[cName] || '', quantity: parseInt(cols[cQty]) || 0, note: (cItemNote >= 0 ? cols[cItemNote] : '') || '' };
+                    if (cManual >= 0 && (cols[cManual] || '').trim() === '是') it.manual = true;
+                    (binName === '待分箱' ? AppState.pool : AppState.trash).set(code, it);
+                    continue;
+                }
+
                 const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
                 const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
                 
@@ -2475,6 +2497,59 @@
     }
     importCsvInput.addEventListener('change', handleCsvImport);
 
+    // --- 進度檔（完整快照）：保存 / 還原 ---
+    // CSV 是給人看的分箱明細，存不了垃圾桶與操作紀錄；進度檔存的是完整狀態，還原後跟離開時一模一樣。
+    const PROGRESS_MAGIC = 'packing-list-helper-progress';
+    function buildProgressSnapshot() {
+        return {
+            app: PROGRESS_MAGIC, version: 1, savedAt: new Date().toISOString(),
+            orderNumber: orderNumberInput.value,
+            binCounter, lockedBinId: AppState.lockedBinId, scanMode,
+            pool: Array.from(AppState.pool.entries()),
+            bins: Array.from(AppState.bins.entries()).map(([k,v]) => [k, {...v, items: Array.from(v.items.entries())}]),
+            trash: Array.from(AppState.trash.entries()),
+            recycle: Array.from(AppState.recycle.entries()),
+            importedOrders: AppState.importedOrders,
+            scanLog: AppState.scanLog
+        };
+    }
+    function restoreProgressFromText(text) {
+        let d;
+        try { d = JSON.parse(text); } catch (e) { showToast('進度檔格式錯誤，無法讀取。', 'error'); return; }
+        if (!d || d.app !== PROGRESS_MAGIC || !Array.isArray(d.bins)) { showToast('這不是本工具的進度檔。', 'error'); return; }
+        AppState.pool = new Map(d.pool || []);
+        AppState.bins = new Map((d.bins || []).map(([k,v]) => [k, {...v, items: new Map(v.items || []), note: v.note || ''}]));
+        AppState.trash = new Map(d.trash || []);
+        AppState.recycle = new Map(d.recycle || []);
+        AppState.importedOrders = d.importedOrders || [];
+        AppState.scanLog = d.scanLog || [];
+        binCounter = d.binCounter || 0;
+        AppState.lockedBinId = d.lockedBinId || null;
+        orderNumberInput.value = d.orderNumber || '';
+        if (d.scanMode && SCAN_MODE_INFO[d.scanMode]) { scanMode = d.scanMode; applyScanMode(); }
+        logEvent('還原', `還原進度檔（存檔時間 ${d.savedAt ? new Date(d.savedAt).toLocaleString('zh-TW') : '未知'}）`);
+        render(); renderImportedList(); saveStateToLocalStorage();
+        showToast('進度已完整還原（含待分箱區）。', 'success');
+    }
+    async function saveProgressFile() {
+        const hasData = AppState.pool.size || AppState.bins.size || AppState.trash.size || AppState.recycle.size;
+        if (!hasData) { showToast('目前沒有資料可以保存。', 'info'); return; }
+        const json = JSON.stringify(buildProgressSnapshot(), null, 1);
+        const now = new Date();
+        const ts = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+        const order = orderNumberInput.value.trim() || 'NoOrder';
+        const filename = `${order}_${ts}_進度.json`;
+        if (exportDirHandle && await saveCsvToExportFolder(json, filename)) {
+            showToast(`進度已保存到「${exportDirHandle.name}」：${filename}`, 'success');
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        showToast(`進度已下載：${filename}（用「還原備份」選這個檔即可完整還原）`, 'success');
+    }
+    document.getElementById('save-progress-btn').addEventListener('click', saveProgressFile);
+
     function showToast(message, type = 'info') {
         const toast = document.createElement('div'); toast.className = `toast-notification ${type}`; toast.textContent = message;
         document.body.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
@@ -2515,13 +2590,19 @@
     }
     async function writeBackupNow() {
         if (!backupActive || !backupDirHandle) return;
-        if (AppState.bins.size === 0 && AppState.trash.size === 0) return; // 空資料不覆寫，避免誤清把好備份蓋掉
+        if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) return; // 空資料不覆寫，避免誤清把好備份蓋掉
         if (typeof window.__plhBuildCSV !== 'function') return;
         try {
             const blob = new Blob([window.__plhBuildCSV()], { type: 'text/csv;charset=utf-8;' });
             for (const fname of ['packing_latest.csv', `packing_${bkTodayStamp()}.csv`]) {
                 const fh = await backupDirHandle.getFileHandle(fname, { create: true });
                 const w = await fh.createWritable(); await w.write(blob); await w.close();
+            }
+            // 另存完整進度檔：CSV 給人看，這份給「還原備份」用（含待分箱/垃圾桶/操作紀錄）
+            const progBlob = new Blob([JSON.stringify(buildProgressSnapshot())], { type: 'application/json' });
+            for (const fname of ['packing_progress_latest.json', `packing_progress_${bkTodayStamp()}.json`]) {
+                const fh = await backupDirHandle.getFileHandle(fname, { create: true });
+                const w = await fh.createWritable(); await w.write(progBlob); await w.close();
             }
             backupLastError = '';
             updateBackupUI('active', { time: new Date() });
@@ -2549,7 +2630,7 @@
     }
     function downloadBackupNow() {
         if (!downloadsFallback) return;
-        if (AppState.bins.size === 0 && AppState.trash.size === 0) return; // 空資料不下載
+        if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) return; // 空資料不下載
         if (typeof window.__plhBuildCSV !== 'function') return;
         try {
             const now = new Date();
