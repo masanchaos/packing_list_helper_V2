@@ -49,6 +49,8 @@
         #clear-data-btn:hover { background-color: #c82333; }
         #quick-add-bins-btn { background-color: #20c997; }
         #quick-add-bins-btn:hover { background-color: #1baa80; }
+        #delete-empty-bins-btn { background-color: #e5e5ea; color: #ff3b30; }
+        #delete-empty-bins-btn:hover { background-color: #d8d8dd; color: #ff3b30; }
 
         /* --- 列表與輸入框 --- */
         .list-header { padding: 0 20px; flex-shrink: 0; }
@@ -542,6 +544,7 @@
                 <div class="button-group">
                     <button id="add-bin-btn">新增箱子</button>
                     <button id="quick-add-bins-btn">快速生成多箱</button>
+                    <button id="delete-empty-bins-btn" type="button" title="刪除所有沒有商品的空箱，剩餘箱子重新編號">🧹 刪除所有空箱</button>
                     <button id="export-btn">匯出 CSV</button>
                     <button id="export-a4-pdf-btn">匯出 PDF (A4總表)</button>
                     <button id="export-a5-pdf-btn">匯出 PDF (A5箱貼)</button>
@@ -1243,6 +1246,24 @@
     });
     clearDataBtn.addEventListener('click', clearAllData);
     quickAddBinsBtn.addEventListener('click', quickAddBins);
+    // 一鍵刪除所有空箱（箱內無商品），剩餘箱子重新編號
+    document.getElementById('delete-empty-bins-btn').addEventListener('click', () => {
+        const empties = Array.from(AppState.bins.entries()).filter(([, b]) => b.items.size === 0);
+        if (empties.length === 0) { showToast('沒有空箱。', 'info'); return; }
+        const withInfo = empties.filter(([, b]) => (b.tracking || '').trim() || (b.note || '').trim()).length;
+        let msg = `確定刪除 ${empties.length} 個空箱嗎？\n（第 ${empties.map(([id]) => id.split('-')[1]).join('、')} 箱；剩餘箱子會重新編號）`;
+        if (withInfo > 0) msg += `\n⚠️ 其中 ${withInfo} 箱已填運單號或備註，會一併刪除。`;
+        if (!confirm(msg)) return;
+        for (const [id] of empties) {
+            if (AppState.lockedBinId === id) AppState.lockedBinId = null;
+            AppState.bins.delete(id);
+        }
+        reIndexBins();
+        logEvent('箱子', `刪除 ${empties.length} 個空箱（剩餘箱子重新編號）`);
+        render();
+        saveStateToLocalStorage();
+        showToast(`已刪除 ${empties.length} 個空箱。`, 'success');
+    });
 
     // --- 每個商品的情境操作鈕：移到未分類 / 垃圾桶、移回待分箱、永久刪除 ---
     document.addEventListener('click', (e) => {
@@ -2045,6 +2066,16 @@
             const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
             return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？\n（CSV 會以「待分箱」列一併寫入，還原備份時可還原）`);
         }
+        // 匯出前提醒：有空箱（箱內無商品）——確認後才繼續匯出
+        function emptyBinsOk() {
+            const empties = [];
+            AppState.bins.forEach((bin, binId) => {
+                if (bin.items.size === 0) empties.push(binId.split('-')[1]);
+            });
+            if (empties.length === 0) return true;
+            return confirm(`有 ${empties.length} 個空箱（第 ${empties.join('、')} 箱）裡面沒有商品。\n可先用右側「🧹 刪除所有空箱」清掉，或確定連空箱一起匯出？`);
+        }
+        window.__plhEmptyBinsOk = emptyBinsOk; // 供外層 Excel 匯出共用同一個檢查
         // 產生匯出用 CSV 字串（手動匯出與自動備份共用；垃圾桶不輸出）
         function buildExportCSV() {
             const orderNumber = orderNumberInput.value.trim() || 'N/A';
@@ -2082,6 +2113,7 @@
         async function exportCSV() {
             if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
             if (!poolNotEmptyOk()) return;
+            if (!emptyBinsOk()) return;
             const csv = buildExportCSV();
             const filename = generateExportFilename('.csv');
             // 有設定匯出資料夾就寫進去；沒設定或寫入失敗則下載到 Downloads
@@ -2948,6 +2980,7 @@
             const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
             if (!confirm(`待分箱區尚有未分類商品（${AppState.pool.size} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`)) return;
         }
+        if (typeof window.__plhEmptyBinsOk === 'function' && !window.__plhEmptyBinsOk()) return;
         const btn = document.getElementById('export-excel-btn');
         const label = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = '準備中…'; }
