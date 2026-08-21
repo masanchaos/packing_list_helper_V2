@@ -1569,15 +1569,35 @@
             showToast(`無法復原：${reason || '狀態已改變'}`, 'error');
         }
     }
+    // ===== 防科學記號／防 Excel 誤判（匯出 CSV 共用） =====
+    // Excel 開 CSV 會把長數字變 1.23E+12、吃掉前導零 0912、把 3-11 當日期 → 資料就毀了。
+    // 對策：把這類值寫成 ="值"（Excel 視為純文字）；還原匯入時由 unwrapExcelText 脫殼。
+    function csvNeedsTextGuard(s) {
+        if (!s) return false;
+        return /^[=+\-@]/.test(s)                                  // 公式注入／被當成負數
+            || /^[0-9]+(\.[0-9]+)?[eE][+\-]?[0-9]+$/.test(s)        // 本身就長得像科學記號
+            || /^[0-9][0-9.,:\/\- ]*$/.test(s);                     // 純數字或數字+分隔符（長號碼／前導零／日期／時間）
+    }
+    function csvField(v) { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; }
+    function csvTextCell(v) {                        // 一律當文字
+        const s = String(v ?? '');
+        if (s === '') return '';
+        if (s.indexOf('"') >= 0) return csvField(s); // 含雙引號無法用 ="..." 包，退回一般欄位
+        return `"=""${s}"""`;                        // 檔案裡呈現為 ="值"
+    }
+    function csvAuto(v) {                            // 只有「看起來像數字/日期」才包成文字
+        const s = String(v ?? '');
+        return csvNeedsTextGuard(s) ? csvTextCell(s) : csvField(s);
+    }
+
     function exportScanLog() {
         if (AppState.scanLog.length === 0) { showToast('沒有操作紀錄可匯出', 'error'); return; }
-        const f = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; };
         let csv = '﻿時間,類別,操作,狀態\n';
         AppState.scanLog.forEach(en => {
             const tstr = new Date(en.ts).toLocaleString('zh-TW', { hour12: false });
             const cat = en.cat || (en.mode ? '掃描' : '操作');
             const text = (en.text != null) ? en.text : (en.result || '');
-            csv += [tstr, cat, text, en.undone ? '已復原' : '有效'].map(f).join(',') + '\n';
+            csv += [csvTextCell(tstr), csvField(cat), csvAuto(text), csvField(en.undone ? '已復原' : '有效')].join(',') + '\n';
         });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
@@ -2082,11 +2102,14 @@
             const binsArray = Array.from(AppState.bins.values());
             
             let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註,手動新增,箱已完成\n";
-            const formatCsvField = (v) => { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return s.search(/("|,|\n)/g) >= 0 ? `"${s}"` : s; };
-            
-            // 商品編號/國際條碼若為純數字 → 用 ="..." 讓 Excel 視為文字（避免科學記號、保留前導零）
-            const csvText = (v) => { const s = String(v ?? ''); return /^[0-9]+$/.test(s) ? `"=""${s}"""` : formatCsvField(s); };
-            const fmtRow = (arr) => arr.map((v, i) => (i === 3 || i === 4) ? csvText(v) : formatCsvField(v)).join(',');
+            // 欄位順序：0訂單號碼 1運單號 2箱號 3商品編號 4國際條碼 5品項名稱 6數量 7備註 8商品備註 9手動新增 10箱已完成
+            const ALWAYS_TEXT = [0, 1, 3, 4];   // 識別碼類：一律包成文字，杜絕科學記號／前導零消失
+            const KEEP_NUMBER = [2, 6];         // 箱號／數量：小整數，維持數值方便排序計算
+            const fmtRow = (arr) => arr.map((v, i) => {
+                if (KEEP_NUMBER.indexOf(i) >= 0) return csvField(v);
+                if (ALWAYS_TEXT.indexOf(i) >= 0) return csvTextCell(v);
+                return csvAuto(v);              // 名稱／備註等自由欄位：長得像數字才包
+            }).join(',');
             binsArray.forEach((bin, index) => {
                 const note = bin.note || '';
                 const binName = `${index + 1}`;
@@ -2462,17 +2485,17 @@
             AppState.pool.clear(); AppState.bins.clear(); AppState.trash.clear(); binCounter=0; AppState.lockedBinId=null;
             let maxBin=0;
 
-            const header = parseCsvRow(rows[0]).map(h => h.trim());
+            // 還原匯出時加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
+            const unwrapExcelText = (s) => { const m = /^="([\s\S]*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
+            const header = parseCsvRow(rows[0]).map(h => unwrapExcelText(h).trim());
             // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
             const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
             const cOrder = col('訂單號碼', 0);
             const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1), cDone = col('箱已完成', -1);
             const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
-            // 還原匯出時對純數字編號/條碼加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
-            const unwrapExcelText = (s) => { const m = /^="(.*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
 
             for(let i=1; i<rows.length; i++){
-                const cols = parseCsvRow(rows[i]);
+                const cols = parseCsvRow(rows[i]).map(unwrapExcelText); // 全欄位脫掉 ="..." 包裝
                 const binName = (cols[cBin] || '').trim();
                 if(!binName) continue;
 
@@ -2942,6 +2965,8 @@
             { header: '手動新增', key: 'manual', width: 10 },
             { header: '照片', key: 'photo', width: 16 },
         ];
+        // 識別碼欄位鎖成「文字」格式：長編號不會變科學記號、前導零不會被吃掉（值本身也一律以字串寫入）
+        ['order', 'tracking', 'code', 'barcode'].forEach(k => { ws.getColumn(k).numFmt = '@'; });
         ws.getRow(1).font = { bold: true };
         ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
         ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -2957,12 +2982,12 @@
             const note = bin.note || '';
             const binName = String(index + 1);
             if (bin.items.size === 0) {
-                addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '', manual: '' }, null);
+                addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '', manual: '' }, null);
             } else {
-                bin.items.forEach(item => addItemRow({ order: orderNumber, tracking: bin.tracking || '', bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
+                bin.items.forEach(item => addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
             }
         });
-        AppState.trash.forEach(item => addItemRow({ order: orderNumber, tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
+        AppState.trash.forEach(item => addItemRow({ order: String(orderNumber), tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
         toEmbed.forEach(e => {
             const comma = e.dataUrl.indexOf(',');
             const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
