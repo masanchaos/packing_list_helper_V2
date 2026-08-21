@@ -1836,14 +1836,16 @@
     // --- 無編號/無名稱：依現有項目自動接續編號 (NoBarCode1, NoName1 ...) ---
     function nextNoBarCode() {
         let max = 0;
-        const scan = (m) => { for (const c of m.keys()) { const mt = /^NoBarCode(\d+)$/i.exec(c); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
+        // 也要認得帶自訂前綴的（ABCD_NoBarCode7），否則有前綴時序號永遠停在 1
+        const scan = (m) => { for (const c of m.keys()) { const mt = /(?:^|_)NoBarCode(\d+)$/i.exec(c); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
         scan(AppState.pool); scan(AppState.trash); scan(AppState.recycle);
         for (const bin of AppState.bins.values()) scan(bin.items);
         return 'NoBarCode' + (max + 1);
     }
     function nextNoName() {
         let max = 0;
-        const scan = (m) => { for (const it of m.values()) { const mt = /^NoName(\d+)$/i.exec(it.name || ''); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
+        // 同上：ABCD_NoName7 也要算進去
+        const scan = (m) => { for (const it of m.values()) { const mt = /(?:^|_)NoName(\d+)$/i.exec(it.name || ''); if (mt) max = Math.max(max, parseInt(mt[1], 10)); } };
         scan(AppState.pool); scan(AppState.trash); scan(AppState.recycle);
         for (const bin of AppState.bins.values()) scan(bin.items);
         return 'NoName' + (max + 1);
