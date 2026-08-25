@@ -2802,12 +2802,12 @@
 
     function collectPhotoItems() {
         // 2026-08-25 起所有商品都能拍照（不再限手動新增）；手動新增的排前面（最常需要拍）
+        // ⚠️ 垃圾桶(recycle)不列入：移到垃圾桶＝已刪除，出現在手機拍照清單會被誤認還在（user 回報過）
         const seen = new Map();
         const consider = (m) => { if (m) m.forEach(it => { if (!seen.has(it.code)) seen.set(it.code, { code: it.code, name: it.name, manual: !!it.manual }); }); };
         consider(AppState.pool);
         AppState.bins.forEach(b => consider(b.items));
         consider(AppState.trash);
-        consider(AppState.recycle);
         const all = Array.from(seen.values());
         return all.filter(it => it.manual).concat(all.filter(it => !it.manual)).map(({ code, name }) => ({ code, name }));
     }
@@ -2818,7 +2818,9 @@
     }
 
     // ---- 拍照 session（QR + 即時進度）----
-    let photoSessionSid = null, photoPollTimer = null, seenVer = new Map(); // code -> 已綁定的照片版本（重拍會變大）
+    // sid 存 localStorage 跨「重新整理」沿用 → 桌面重整後手機不用重掃 QR，舊手機頁也不會抱著過期清單
+    let photoSessionSid = null, photoPollTimer = null, seenVer = new Map(); // seenVer: code -> 已綁定的照片版本（重拍會變大）
+    try { photoSessionSid = localStorage.getItem('plhPhotoSid') || null; } catch (e) {}
     let photoSessionItems = []; // 最近一次輪詢的 session 清單（給篩選框重繪用）
     function genSid() { return 'plh-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
     async function openPhotoSession(focusCode) {
@@ -2835,8 +2837,11 @@
             showToast('未連到本機橋接，請先啟動 python -m src.bridge（並更新到最新版）。', 'error');
             return;
         }
-        // sid 整場沿用：手機掃過一次 QR 後，之後點其他商品的 📷 只是換 focus，手機頁自動跳過去、不用重掃
-        if (!photoSessionSid) { photoSessionSid = genSid(); seenVer = new Map(); }
+        // sid 整場沿用（含跨重新整理）：手機掃過一次 QR 後，之後點其他商品的 📷 只是換 focus，手機頁自動跳過去、不用重掃
+        if (!photoSessionSid) {
+            photoSessionSid = genSid(); seenVer = new Map();
+            try { localStorage.setItem('plhPhotoSid', photoSessionSid); } catch (e) {}
+        }
         try {
             const r = await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items, focus: focusCode || '' }) });
             const j = await r.json();
@@ -2908,6 +2913,18 @@
         if (photoPollTimer) { clearInterval(photoPollTimer); photoPollTimer = null; }
         // sid 保留不清：下次點 📷 沿用同一 session，已掃過 QR 的手機不用重掃
         document.getElementById('photo-session-modal').style.display = 'none';
+    }
+    // 商品有增刪改就把最新清單同步給拍照 session（不帶 focus → 手機頁只更新清單、不會重新跳轉）
+    // → 刪除／移到垃圾桶的商品幾秒內就從手機拍照清單消失，不會殘留
+    let photoSessionSyncTimer = null;
+    function scheduleSessionSync() {
+        if (!photoSessionSid) return; // 從沒用過拍照就不用同步
+        clearTimeout(photoSessionSyncTimer);
+        photoSessionSyncTimer = setTimeout(async () => {
+            try {
+                await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items: collectPhotoItems() }) });
+            } catch (e) { /* 橋接沒開就算了；下次點 📷 會整份重送 */ }
+        }, 2000);
     }
 
     // ---- 照片檢視 / 移除 ----
@@ -3048,6 +3065,7 @@
             binCounter, orderNumber: orderNumberInput.value, lockedBinId: AppState.lockedBinId
         }));
         scheduleBackup();
+        scheduleSessionSync(); // 商品變動同步到手機拍照清單（刪掉的不殘留）
     }
     function loadStateFromLocalStorage() {
         const s = localStorage.getItem('binningToolState_v72');
