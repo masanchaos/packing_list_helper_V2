@@ -487,7 +487,7 @@
                     <label for="import-csv-input" class="button-label" title="選擇進度檔(.json)、Excel 備份(.xlsx) 或舊的 CSV 備份還原">還原備份</label>
                     <input type="file" id="import-csv-input" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display: none;">
                     <button id="manual-add-btn">手動新增商品</button>
-                    <button id="photo-session-btn">📷 新商品拍照</button>
+                    <button id="photo-session-btn">📷 商品拍照</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
@@ -632,11 +632,12 @@
 
     <div id="photo-session-modal" class="modal-overlay">
         <div class="modal-content" style="width: 460px; max-width: 94vw; text-align: center;">
-            <h3>📷 新商品拍照</h3>
-            <div style="font-size:13px; color:#8e8e93; margin:6px 0 14px;">用手機掃描下方 QR，逐一拍照後會自動綁定到對應商品（兩台需同一 wifi、本機橋接需開啟）。</div>
+            <h3>📷 商品拍照</h3>
+            <div style="font-size:13px; color:#8e8e93; margin:6px 0 14px;">用手機掃描下方 QR，從清單挑商品拍照後會自動綁定（清單含全部商品、手動新增的排前面；兩台需同一 wifi、本機橋接需開啟）。</div>
             <div id="photo-session-qr" style="display:flex; justify-content:center; align-items:center; min-height:200px;"></div>
             <div id="photo-session-url" style="font-size:12px; color:#8e8e93; word-break:break-all; margin:8px 0;"></div>
             <div id="photo-session-progress" style="font-weight:600; margin:10px 0;"></div>
+            <input type="search" id="photo-session-filter" placeholder="🔍 篩選商品編號／名稱..." style="width:100%; margin:0 0 8px;">
             <div id="photo-session-list" style="max-height:34vh; overflow-y:auto; text-align:left; margin:8px 0;"></div>
             <div class="button-group" style="justify-content: center;">
                 <button id="photo-session-done-btn">完成</button>
@@ -2793,14 +2794,16 @@
     async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); scheduleBackup(); }
     async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); scheduleBackup(); }
 
-    function collectManualItems() {
+    function collectPhotoItems() {
+        // 2026-08-25 起所有商品都能拍照（不再限手動新增）；手動新增的排前面（最常需要拍）
         const seen = new Map();
-        const consider = (m) => { if (m) m.forEach(it => { if (it.manual && !seen.has(it.code)) seen.set(it.code, it.name); }); };
+        const consider = (m) => { if (m) m.forEach(it => { if (!seen.has(it.code)) seen.set(it.code, { code: it.code, name: it.name, manual: !!it.manual }); }); };
         consider(AppState.pool);
         AppState.bins.forEach(b => consider(b.items));
         consider(AppState.trash);
         consider(AppState.recycle);
-        return Array.from(seen, ([code, name]) => ({ code, name }));
+        const all = Array.from(seen.values());
+        return all.filter(it => it.manual).concat(all.filter(it => !it.manual)).map(({ code, name }) => ({ code, name }));
     }
     function findItemByCode(code) {
         let it = AppState.pool.get(code); if (it) return it;
@@ -2810,10 +2813,11 @@
 
     // ---- 拍照 session（QR + 即時進度）----
     let photoSessionSid = null, photoPollTimer = null, seenVer = new Map(); // code -> 已綁定的照片版本（重拍會變大）
+    let photoSessionItems = []; // 最近一次輪詢的 session 清單（給篩選框重繪用）
     function genSid() { return 'plh-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
     async function openPhotoSession() {
-        const items = collectManualItems();
-        if (!items.length) { showToast('目前沒有「手動新增」的新商品需要拍照。', 'info'); return; }
+        const items = collectPhotoItems();
+        if (!items.length) { showToast('目前沒有商品可以拍照。', 'info'); return; }
         let lan;
         try {
             const h = await fetch(`${BRIDGE_URL}/health`, { cache: 'no-store' });
@@ -2839,6 +2843,8 @@
             qrBox.innerHTML = '<img alt="QR" style="width:220px;height:220px;image-rendering:pixelated;" src="' + qr.createDataURL(8, 4) + '">';
         } catch (e) { qrBox.textContent = '（QR 產生失敗，請改用下方網址）'; }
         document.getElementById('photo-session-url').textContent = url;
+        const filterBox = document.getElementById('photo-session-filter');
+        if (filterBox) filterBox.value = '';
         renderPhotoSession(items.map(it => ({ ...it, has_photo: photoMem.has(it.code) })));
         document.getElementById('photo-session-modal').style.display = 'flex';
         if (photoPollTimer) clearInterval(photoPollTimer);
@@ -2870,12 +2876,17 @@
         renderPhotoSession(items);
     }
     function renderPhotoSession(items) {
+        photoSessionItems = items;
         const bound = items.filter(it => photoMem.has(it.code)).length;
         const prog = document.getElementById('photo-session-progress');
         if (prog) prog.textContent = `已綁定 ${bound} / ${items.length}`;
         const list = document.getElementById('photo-session-list');
         if (!list) return;
-        list.innerHTML = items.map(it => {
+        // 篩選框在清單外、不會被重繪 → 輪詢重繪時沿用目前輸入
+        const q = ((document.getElementById('photo-session-filter') || {}).value || '').trim().toLowerCase();
+        const shown = q ? items.filter(it => String(it.code).toLowerCase().includes(q) || String(it.name || '').toLowerCase().includes(q)) : items;
+        if (q && !shown.length) { list.innerHTML = '<div style="padding:14px 4px; color:#8e8e93;">沒有符合「' + phEsc(q) + '」的商品</div>'; return; }
+        list.innerHTML = shown.map(it => {
             const ok = photoMem.has(it.code);
             const right = ok
                 ? '<img src="' + photoMem.get(it.code) + '" style="width:36px;height:36px;object-fit:cover;border-radius:6px;flex:0 0 auto;">'
@@ -3067,6 +3078,7 @@
     // 新商品拍照 / 商品圖卡
     document.getElementById('photo-session-btn').addEventListener('click', openPhotoSession);
     document.getElementById('photo-session-done-btn').addEventListener('click', closePhotoSession);
+    document.getElementById('photo-session-filter').addEventListener('input', () => renderPhotoSession(photoSessionItems));
     document.getElementById('photo-view-close-btn').addEventListener('click', closePhotoViewer);
     document.getElementById('photo-view-remove-btn').addEventListener('click', () => { if (photoViewCode && confirm('確定移除這張照片？')) { const c = photoViewCode; closePhotoViewer(); removeItemPhoto(c); showToast('已移除照片', 'info'); } });
     document.getElementById('export-excel-btn').addEventListener('click', exportPhotoExcel);
