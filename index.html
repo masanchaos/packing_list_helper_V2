@@ -282,6 +282,7 @@
         .item { position: relative; padding-right: 56px; }
         .item.acts-3 { padding-right: 82px; }
         .item.acts-4 { padding-right: 120px; }
+        .item.acts-5 { padding-right: 158px; }
         .item-act.edit:hover { background-color: #e7f0ff; }
         .item-actions {
             position: absolute; top: 7px; right: 6px;
@@ -487,7 +488,6 @@
                     <label for="import-csv-input" class="button-label" title="選擇進度檔(.json)、Excel 備份(.xlsx) 或舊的 CSV 備份還原">還原備份</label>
                     <input type="file" id="import-csv-input" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display: none;">
                     <button id="manual-add-btn">手動新增商品</button>
-                    <button id="photo-session-btn">📷 商品拍照</button>
                     <button id="clear-data-btn">清除全部資料</button>
                 </div>
             </div>
@@ -633,7 +633,7 @@
     <div id="photo-session-modal" class="modal-overlay">
         <div class="modal-content" style="width: 460px; max-width: 94vw; text-align: center;">
             <h3>📷 商品拍照</h3>
-            <div style="font-size:13px; color:#8e8e93; margin:6px 0 14px;">用手機掃描下方 QR，從清單挑商品拍照後會自動綁定（清單含全部商品、手動新增的排前面；兩台需同一 wifi、本機橋接需開啟）。</div>
+            <div style="font-size:13px; color:#8e8e93; margin:6px 0 14px;">用手機掃描下方 QR 拍照，拍好自動綁定。之後點任一商品的 📷，已開著的手機頁會自動跳到該商品（不用重掃 QR）；兩台需同一 wifi、本機橋接需開啟。</div>
             <div id="photo-session-qr" style="display:flex; justify-content:center; align-items:center; min-height:200px;"></div>
             <div id="photo-session-url" style="font-size:12px; color:#8e8e93; word-break:break-all; margin:8px 0;"></div>
             <div id="photo-session-progress" style="font-weight:600; margin:10px 0;"></div>
@@ -651,6 +651,7 @@
             <div id="photo-view-sub" style="font-size:13px; color:#8e8e93; margin-bottom:12px;"></div>
             <img id="photo-view-img" alt="" style="max-width:100%; max-height:60vh; border-radius:10px;">
             <div class="button-group" style="justify-content: center; margin-top:16px;">
+                <button id="photo-view-retake-btn" title="開手機拍照 QR 重拍這張照片">📷 重拍</button>
                 <button id="photo-view-remove-btn" style="background-color:#ff3b30;">移除照片</button>
                 <button id="photo-view-close-btn">關閉</button>
             </div>
@@ -878,6 +879,8 @@
         }
         // 手動新增的商品：不論在哪一區，都可再編輯
         if (item.manual) acts = [['edit', '✏️', '編輯此商品（手動新增）'], ...acts];
+        // 每樣商品（不分區域）都可拍照：開手機拍照 QR、自動綁定；已有照片＝重拍
+        acts = [['photo', '📷', photoMem.has(item.code) ? '重新拍照（手機掃 QR）' : '拍照上傳（手機掃 QR）'], ...acts];
         const actBox = document.createElement('div');
         actBox.className = 'item-actions';
         acts.forEach(([act, glyph, title]) => {
@@ -916,7 +919,8 @@
         });
         itemEl.appendChild(itemNoteInput);
         if (acts.length === 3) itemEl.classList.add('acts-3');
-        else if (acts.length >= 4) itemEl.classList.add('acts-4');
+        else if (acts.length === 4) itemEl.classList.add('acts-4');
+        else if (acts.length >= 5) itemEl.classList.add('acts-5');
         return itemEl;
     }
 
@@ -1276,6 +1280,7 @@
         const item = map && map.get(code);
         if (!item) return;
         if (act === 'edit') { openEditItemModal(source, code); return; }
+        if (act === 'photo') { openPhotoSession(code); return; }
         if (act === 'del') {
             const name = item.name, qty = item.quantity;
             if (!confirm(`確定要刪除「${name}」（共 ${qty} 件）嗎？\n刪除後仍可在「操作紀錄」復原。`)) return;
@@ -1960,11 +1965,12 @@
         if (doManualAdd() === null) return;
         manualAddModal.style.display = 'none';
     });
-    // 新增並拍照：先把表單這筆商品新增進去，接著直接開拍照 QR（新增的同時就拍好照）
+    // 新增並拍照：先把表單這筆商品新增進去，接著直接開拍照 QR 並聚焦在剛新增的商品
     document.getElementById('manual-add-photo-btn').addEventListener('click', () => {
-        if (doManualAdd() === null) return;
+        const code = doManualAdd();
+        if (code === null) return;
         manualAddModal.style.display = 'none';
-        openPhotoSession();
+        openPhotoSession(code);
     });
 
     // --- 編輯商品（僅限手動新增的商品；不論在哪一區皆可）---
@@ -2815,7 +2821,7 @@
     let photoSessionSid = null, photoPollTimer = null, seenVer = new Map(); // code -> 已綁定的照片版本（重拍會變大）
     let photoSessionItems = []; // 最近一次輪詢的 session 清單（給篩選框重繪用）
     function genSid() { return 'plh-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
-    async function openPhotoSession() {
+    async function openPhotoSession(focusCode) {
         const items = collectPhotoItems();
         if (!items.length) { showToast('目前沒有商品可以拍照。', 'info'); return; }
         let lan;
@@ -2829,10 +2835,10 @@
             showToast('未連到本機橋接，請先啟動 python -m src.bridge（並更新到最新版）。', 'error');
             return;
         }
-        photoSessionSid = genSid();
-        seenVer = new Map(); // 每次開新 session 重置；改用版本判斷照片是否更新（含重拍）
+        // sid 整場沿用：手機掃過一次 QR 後，之後點其他商品的 📷 只是換 focus，手機頁自動跳過去、不用重掃
+        if (!photoSessionSid) { photoSessionSid = genSid(); seenVer = new Map(); }
         try {
-            const r = await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items }) });
+            const r = await fetch(`${BRIDGE_URL}/photo/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sid: photoSessionSid, items, focus: focusCode || '' }) });
             const j = await r.json();
             if (!j.ok) throw 0;
         } catch (e) { showToast('建立拍照工作階段失敗。', 'error'); return; }
@@ -2844,7 +2850,7 @@
         } catch (e) { qrBox.textContent = '（QR 產生失敗，請改用下方網址）'; }
         document.getElementById('photo-session-url').textContent = url;
         const filterBox = document.getElementById('photo-session-filter');
-        if (filterBox) filterBox.value = '';
+        if (filterBox) filterBox.value = focusCode || ''; // 從商品卡片開啟 → 清單先聚焦在那一項
         renderPhotoSession(items.map(it => ({ ...it, has_photo: photoMem.has(it.code) })));
         document.getElementById('photo-session-modal').style.display = 'flex';
         if (photoPollTimer) clearInterval(photoPollTimer);
@@ -2900,7 +2906,7 @@
     }
     function closePhotoSession() {
         if (photoPollTimer) { clearInterval(photoPollTimer); photoPollTimer = null; }
-        photoSessionSid = null;
+        // sid 保留不清：下次點 📷 沿用同一 session，已掃過 QR 的手機不用重掃
         document.getElementById('photo-session-modal').style.display = 'none';
     }
 
@@ -3076,10 +3082,10 @@
     document.getElementById('export-folder-clear-btn').addEventListener('click', clearExportFolder);
     initExportFolder();
     // 新商品拍照 / 商品圖卡
-    document.getElementById('photo-session-btn').addEventListener('click', openPhotoSession);
     document.getElementById('photo-session-done-btn').addEventListener('click', closePhotoSession);
     document.getElementById('photo-session-filter').addEventListener('input', () => renderPhotoSession(photoSessionItems));
     document.getElementById('photo-view-close-btn').addEventListener('click', closePhotoViewer);
+    document.getElementById('photo-view-retake-btn').addEventListener('click', () => { const c = photoViewCode; if (!c) return; closePhotoViewer(); openPhotoSession(c); });
     document.getElementById('photo-view-remove-btn').addEventListener('click', () => { if (photoViewCode && confirm('確定移除這張照片？')) { const c = photoViewCode; closePhotoViewer(); removeItemPhoto(c); showToast('已移除照片', 'info'); } });
     document.getElementById('export-excel-btn').addEventListener('click', exportPhotoExcel);
     loadPhotos();
