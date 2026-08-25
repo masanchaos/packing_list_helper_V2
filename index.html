@@ -879,8 +879,8 @@
         }
         // 手動新增的商品：不論在哪一區，都可再編輯
         if (item.manual) acts = [['edit', '✏️', '編輯此商品（手動新增）'], ...acts];
-        // 每樣商品（不分區域）都可拍照：開手機拍照 QR、自動綁定；已有照片＝重拍
-        acts = [['photo', '📷', photoMem.has(item.code) ? '重新拍照（手機掃 QR）' : '拍照上傳（手機掃 QR）'], ...acts];
+        // 每樣商品都可拍照：開手機拍照 QR、自動綁定；已有照片＝重拍（垃圾桶除外：已刪除的商品不列入拍照清單）
+        if (source !== 'recycle') acts = [['photo', '📷', photoMem.has(item.code) ? '重新拍照（手機掃 QR）' : '拍照上傳（手機掃 QR）'], ...acts];
         const actBox = document.createElement('div');
         actBox.className = 'item-actions';
         acts.forEach(([act, glyph, title]) => {
