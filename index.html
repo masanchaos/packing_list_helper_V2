@@ -37,8 +37,6 @@
         #mode-switch-btn.check-mode { background-color: #fd7e14; }
         #mode-switch-btn.check-mode:hover { background-color: #e36209; }
 
-        #export-btn { background-color: #28a745; }
-        #export-btn:hover { background-color: #218838; }
         #export-a4-pdf-btn { background-color: #17a2b8; }
         #export-a4-pdf-btn:hover { background-color: #138496; }
         #export-a5-pdf-btn { background-color: #fd7e14; }
@@ -382,10 +380,10 @@
         #mode-switch-btn.inbound-mode, #mode-switch-btn.inbound-mode:hover,
         #mode-switch-btn.check-mode, #mode-switch-btn.check-mode:hover,
         #scan-mode-btn.mode-intobox, #scan-mode-btn.mode-addpool, #scan-mode-btn.mode-addintobox,
-        #export-btn, #export-a4-pdf-btn, #export-a5-pdf-btn, #export-thermal-pdf-btn,
+        #export-a4-pdf-btn, #export-a5-pdf-btn, #export-thermal-pdf-btn,
         #quick-add-bins-btn, #scan-log-btn, #dump-pool-btn, #restore-trash-btn { background-color: #e5e5ea; color: #007aff; }
         #scan-mode-btn.mode-intobox:hover, #scan-mode-btn.mode-addpool:hover, #scan-mode-btn.mode-addintobox:hover,
-        #export-btn:hover, #export-a4-pdf-btn:hover, #export-a5-pdf-btn:hover, #export-thermal-pdf-btn:hover,
+        #export-a4-pdf-btn:hover, #export-a5-pdf-btn:hover, #export-thermal-pdf-btn:hover,
         #quick-add-bins-btn:hover, #scan-log-btn:hover, #dump-pool-btn:hover, #restore-trash-btn:hover { background-color: #d8d8dd; color: #007aff; }
 
         /* 輸入框：iOS 圓角、白底、藍色聚焦 */
@@ -486,8 +484,8 @@
                     <button id="mode-switch-btn">目前模式：出貨模式</button>
                     <button id="parse-btn">解析資料</button>
                     <button id="save-progress-btn" type="button" title="把目前完整進度（待分箱區、箱子、未分類、垃圾桶、操作紀錄）存成一個進度檔">💾 保存進度</button>
-                    <label for="import-csv-input" class="button-label" title="選擇進度檔(.json)或舊的 CSV 備份還原">還原備份</label>
-                    <input type="file" id="import-csv-input" accept=".csv,.json,text/csv,application/json" style="display: none;">
+                    <label for="import-csv-input" class="button-label" title="選擇進度檔(.json)、Excel 備份(.xlsx) 或舊的 CSV 備份還原">還原備份</label>
+                    <input type="file" id="import-csv-input" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display: none;">
                     <button id="manual-add-btn">手動新增商品</button>
                     <button id="photo-session-btn">📷 新商品拍照</button>
                     <button id="clear-data-btn">清除全部資料</button>
@@ -545,14 +543,13 @@
                     <button id="add-bin-btn">新增箱子</button>
                     <button id="quick-add-bins-btn">快速生成多箱</button>
                     <button id="delete-empty-bins-btn" type="button" title="刪除所有沒有商品的空箱，剩餘箱子重新編號">🧹 刪除所有空箱</button>
-                    <button id="export-btn">匯出 CSV</button>
+                    <button id="export-excel-btn">📊 匯出 Excel（含照片）</button>
                     <button id="export-a4-pdf-btn">匯出 PDF (A4總表)</button>
                     <button id="export-a5-pdf-btn">匯出 PDF (A5箱貼)</button>
                     <button id="export-thermal-pdf-btn">匯出 熱感紙 (10x15)</button>
-                    <button id="export-excel-btn">📊 匯出 Excel（含照片）</button>
                 </div>
                 <div id="export-folder-bar" class="backup-bar" data-state="off">
-                    <span id="export-folder-status">📁 匯出 CSV 目前直接下載到「下載」資料夾</span>
+                    <span id="export-folder-status">📁 匯出檔案目前直接下載到「下載」資料夾</span>
                     <span class="backup-acts">
                         <button id="export-folder-set-btn" type="button">設定匯出資料夾</button>
                         <button id="export-folder-clear-btn" type="button">改回下載</button>
@@ -664,7 +661,7 @@
             <h3 style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                 <span>📜 操作紀錄 <span class="item-count" id="scan-log-count">0</span></span>
                 <span style="display:flex; gap:6px;">
-                    <button id="scan-log-export-btn" style="background-color:#28a745; padding:5px 10px; font-size:13px;">匯出 CSV</button>
+                    <button id="scan-log-export-btn" style="background-color:#28a745; padding:5px 10px; font-size:13px;">匯出 Excel</button>
                     <button id="scan-log-clear-btn" style="background-color:#dc3545; padding:5px 10px; font-size:13px;">清空紀錄</button>
                 </span>
             </h3>
@@ -748,7 +745,7 @@
     let editTargetSource = null, editTargetCode = null;
 
     let AppState = { pool: new Map(), bins: new Map(), lockedBinId: null, trash: new Map(), recycle: new Map(), scanLog: [], importedOrders: [] };
-    let photoMem = new Map(); // 商品編號 -> 照片 dataURL（存 IndexedDB plh_photos；不寫進 CSV）
+    let photoMem = new Map(); // 商品編號 -> 照片 dataURL（存 IndexedDB plh_photos；匯出 Excel 時內嵌縮圖）
     let binCounter = 0;
     let currentSearchTerm = '';
     let currentTrashSearchTerm = '';
@@ -1569,42 +1566,48 @@
             showToast(`無法復原：${reason || '狀態已改變'}`, 'error');
         }
     }
-    // ===== 防科學記號／防 Excel 誤判（匯出 CSV 共用） =====
-    // Excel 開 CSV 會把長數字變 1.23E+12、吃掉前導零 0912、把 3-11 當日期 → 資料就毀了。
-    // 對策：把這類值寫成 ="值"（Excel 視為純文字）；還原匯入時由 unwrapExcelText 脫殼。
-    function csvNeedsTextGuard(s) {
-        if (!s) return false;
-        return /^[=+\-@]/.test(s)                                  // 公式注入／被當成負數
-            || /^[0-9]+(\.[0-9]+)?[eE][+\-]?[0-9]+$/.test(s)        // 本身就長得像科學記號
-            || /^[0-9][0-9.,:\/\- ]*$/.test(s);                     // 純數字或數字+分隔符（長號碼／前導零／日期／時間）
-    }
-    function csvField(v) { let s = String(v ?? ''); s = s.replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; }
-    function csvTextCell(v) {                        // 一律當文字
-        const s = String(v ?? '');
-        if (s === '') return '';
-        if (s.indexOf('"') >= 0) return csvField(s); // 含雙引號無法用 ="..." 包，退回一般欄位
-        return `"=""${s}"""`;                        // 檔案裡呈現為 ="值"
-    }
-    function csvAuto(v) {                            // 只有「看起來像數字/日期」才包成文字
-        const s = String(v ?? '');
-        return csvNeedsTextGuard(s) ? csvTextCell(s) : csvField(s);
-    }
+    // ===== 匯出一律用 Excel（.xlsx）=====
+    // 分箱清單常帶商品照片，CSV 裝不下 → 2026-08-25 起全面改 xlsx（儲存格有型別，也不會有科學記號問題）。
+    const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-    function exportScanLog() {
+    async function exportScanLog() {
         if (AppState.scanLog.length === 0) { showToast('沒有操作紀錄可匯出', 'error'); return; }
-        let csv = '﻿時間,類別,操作,狀態\n';
-        AppState.scanLog.forEach(en => {
-            const tstr = new Date(en.ts).toLocaleString('zh-TW', { hour12: false });
-            const cat = en.cat || (en.mode ? '掃描' : '操作');
-            const text = (en.text != null) ? en.text : (en.result || '');
-            csv += [csvTextCell(tstr), csvField(cat), csvAuto(text), csvField(en.undone ? '已復原' : '有效')].join(',') + '\n';
-        });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-        const now = new Date();
-        const order = orderNumberInput.value.trim() || 'NoOrder';
-        link.download = `${order}_操作紀錄_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.csv`;
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        const btn = document.getElementById('scan-log-export-btn');
+        const label = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '產生中…'; }
+        try {
+            await ensureExcelJS();
+            const wb = new ExcelJS.Workbook();
+            const ws = wb.addWorksheet('操作紀錄');
+            ws.columns = [
+                { header: '時間', key: 'time', width: 20 },
+                { header: '類別', key: 'cat', width: 10 },
+                { header: '操作', key: 'text', width: 70 },
+                { header: '狀態', key: 'state', width: 10 },
+            ];
+            ws.getColumn('time').numFmt = '@'; // 時間鎖成文字，Excel 不會亂轉格式
+            ws.getRow(1).font = { bold: true };
+            ws.views = [{ state: 'frozen', ySplit: 1 }];
+            AppState.scanLog.forEach(en => {
+                ws.addRow({
+                    time: new Date(en.ts).toLocaleString('zh-TW', { hour12: false }),
+                    cat: en.cat || (en.mode ? '掃描' : '操作'),
+                    text: String((en.text != null) ? en.text : (en.result || '')),
+                    state: en.undone ? '已復原' : '有效'
+                });
+            });
+            const buf = await wb.xlsx.writeBuffer();
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([buf], { type: XLSX_MIME }));
+            const now = new Date();
+            const order = orderNumberInput.value.trim() || 'NoOrder';
+            link.download = `${order}_操作紀錄_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}.xlsx`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        } catch (e) {
+            showToast('匯出操作紀錄失敗：' + ((e && e.message) || e), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = label; }
+        }
     }
     function clearScanLog() {
         if (AppState.scanLog.length === 0) { showToast('紀錄已是空的', 'info'); return; }
@@ -2071,22 +2074,16 @@
     commandInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); executeCommandBtn.click(); } });
 
     function setupExports() {
-        const exportBtn = document.getElementById('export-btn');
         const exportA4PdfBtn = document.getElementById('export-a4-pdf-btn');
         const exportA5PdfBtn = document.getElementById('export-a5-pdf-btn');
         const exportThermalPdfBtn = document.getElementById('export-thermal-pdf-btn');
-        
-        function generateExportFilename(extension) {
-            const now = new Date();
-            const orderNumber = orderNumberInput.value.trim() || 'NoOrder';
-            return `${orderNumber}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}_packing_list${extension}`;
-        }
+
         // 匯出前提醒：待分箱區還有商品沒分箱（任一匯出都會先問）
         function poolNotEmptyOk() {
             const n = AppState.pool.size;
             if (n === 0) return true;
             const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
-            return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？\n（CSV 會以「待分箱」列一併寫入，還原備份時可還原）`);
+            return confirm(`待分箱區尚有未分類商品（${n} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`);
         }
         // 匯出前提醒：有空箱（箱內無商品）——確認後才繼續匯出
         function emptyBinsOk() {
@@ -2098,57 +2095,7 @@
             return confirm(`有 ${empties.length} 個空箱（第 ${empties.join('、')} 箱）裡面沒有商品。\n可先用右側「🧹 刪除所有空箱」清掉，或確定連空箱一起匯出？`);
         }
         window.__plhEmptyBinsOk = emptyBinsOk; // 供外層 Excel 匯出共用同一個檢查
-        // 產生匯出用 CSV 字串（手動匯出與自動備份共用；垃圾桶不輸出）
-        function buildExportCSV() {
-            const orderNumber = orderNumberInput.value.trim() || 'N/A';
-            const binsArray = Array.from(AppState.bins.values());
-            
-            let csvContent = "\uFEFF訂單號碼,運單號,箱號,商品編號,國際條碼,品項名稱,數量,備註,商品備註,手動新增,箱已完成\n";
-            // 欄位順序：0訂單號碼 1運單號 2箱號 3商品編號 4國際條碼 5品項名稱 6數量 7備註 8商品備註 9手動新增 10箱已完成
-            const ALWAYS_TEXT = [0, 1, 3, 4];   // 識別碼類：一律包成文字，杜絕科學記號／前導零消失
-            const KEEP_NUMBER = [2, 6];         // 箱號／數量：小整數，維持數值方便排序計算
-            const fmtRow = (arr) => arr.map((v, i) => {
-                if (KEEP_NUMBER.indexOf(i) >= 0) return csvField(v);
-                if (ALWAYS_TEXT.indexOf(i) >= 0) return csvTextCell(v);
-                return csvAuto(v);              // 名稱／備註等自由欄位：長得像數字才包
-            }).join(',');
-            binsArray.forEach((bin, index) => {
-                const note = bin.note || '';
-                const binName = `${index + 1}`;
-                const done = bin.completed ? '是' : '';
-                if (bin.items.size === 0) {
-                    csvContent += fmtRow([orderNumber, bin.tracking, binName, '', '', '此箱無商品', 0, note, '', '', done]) + "\n";
-                } else {
-                    bin.items.forEach(item => {
-                        csvContent += fmtRow([orderNumber, bin.tracking, binName, item.code, item.barcode, item.name, item.quantity, note, item.note || '', item.manual ? '是' : '', done]) + "\n";
-                    });
-                }
-            });
-            // 未能分類商品區也一併輸出（箱號標示為「未分類」）
-            AppState.trash.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '未分類', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '', '']) + "\n";
-            });
-            // 待分箱區也一併輸出（箱號標示為「待分箱」）→ 還原備份時才能還原待分箱區
-            AppState.pool.forEach(item => {
-                csvContent += fmtRow([orderNumber, '', '待分箱', item.code, item.barcode, item.name, item.quantity, '', item.note || '', item.manual ? '是' : '', '']) + "\n";
-            });
-            return csvContent;
-        }
-        window.__plhBuildCSV = buildExportCSV; // 供外層「自動備份」取用同一份 CSV 產生器
-        async function exportCSV() {
-            if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) { showToast("沒有資料可以匯出！", "error"); return; }
-            if (!poolNotEmptyOk()) return;
-            if (!emptyBinsOk()) return;
-            const csv = buildExportCSV();
-            const filename = generateExportFilename('.csv');
-            // 有設定匯出資料夾就寫進去；沒設定或寫入失敗則下載到 Downloads
-            if (exportDirHandle && await saveCsvToExportFolder(csv, filename)) {
-                showToast(`已匯出到「${exportDirHandle.name}」：${filename}`, 'success');
-                return;
-            }
-            const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-            link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        }
+        // （CSV 匯出已於 2026-08-25 移除：分箱清單一律用「📊 匯出 Excel」，見 exportPhotoExcel）
         
         // ★★★ 全面美化與升級的 A4 總表匯出 ★★★
         function exportA4PDF() { 
@@ -2450,7 +2397,6 @@
             btn.textContent='匯出 熱感紙 (10x15)';
         }
 
-        exportBtn.addEventListener('click', exportCSV);
         exportA4PdfBtn.addEventListener('click', exportA4PDF);
         exportA5PdfBtn.addEventListener('click', exportA5BoxLabelsPDF);
         exportThermalPdfBtn.addEventListener('click', exportThermalLabelsPDF);
@@ -2472,99 +2418,118 @@
         return out.map(c => c.replace(/\r$/, ''));
     }
     
-    // --- CSV 匯入邏輯 (支援多種格式) ---
+    // --- 還原備份：進度檔(.json) / Excel(.xlsx) / 舊 CSV 都吃 ---
+    // 共用表格還原：rows = 字串陣列的陣列（rows[0] 為表頭），CSV 與 Excel 讀出來都餵進這裡
+    function restoreFromTableRows(rawRows, kindLabel) {
+        // 還原匯出時加的 ="..." 文字包裝（舊 CSV 備份；無包裝原樣通過，Excel 讀出的值不受影響）
+        const unwrapExcelText = (s) => { const m = /^="([\s\S]*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
+        const rows = rawRows.map(r => r.map(c => unwrapExcelText(String(c == null ? '' : c))));
+        if (rows.length <= 1) { showToast('檔案裡沒有資料列，未還原。', 'error'); return; }
+        AppState.pool.clear(); AppState.bins.clear(); AppState.trash.clear(); binCounter=0; AppState.lockedBinId=null;
+        let maxBin=0;
+
+        const header = rows[0].map(h => h.trim());
+        // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
+        const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
+        const cOrder = col('訂單號碼', 0);
+        const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1), cDone = col('箱已完成', -1);
+        const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
+
+        for(let i=1; i<rows.length; i++){
+            const cols = rows[i];
+            const binName = (cols[cBin] || '').trim();
+            if(!binName) continue;
+
+            const rowOrder = (cols[cOrder] || '').trim();
+            if (rowOrder && rowOrder !== 'N/A' && !orderNumberInput.value.trim()) orderNumberInput.value = rowOrder;
+
+            // 「待分箱」「未分類」不是箱子：分別還原到待分箱區 / 未能分類商品區
+            if (binName === '待分箱' || binName === '未分類') {
+                const code = cols[cCode] || '';
+                if (!code) continue;
+                const it = { code, barcode: cols[cBarcode] || '', name: cols[cName] || '', quantity: parseInt(cols[cQty]) || 0, note: (cItemNote >= 0 ? cols[cItemNote] : '') || '' };
+                if (cManual >= 0 && (cols[cManual] || '').trim() === '是') it.manual = true;
+                (binName === '待分箱' ? AppState.pool : AppState.trash).set(code, it);
+                continue;
+            }
+
+            const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
+            const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
+
+            maxBin = Math.max(maxBin, bNum);
+            const bId = `bin-${bNum}`;
+
+            const note = (cNote >= 0 ? cols[cNote] : '') || '';
+            const itemNote = (cItemNote >= 0 ? cols[cItemNote] : '') || '';
+            const itemCode = cols[cCode] || '';
+            const itemBarcode = cols[cBarcode] || '';
+            const itemName = cols[cName] || '';
+            const itemQty = parseInt(cols[cQty]) || 0;
+
+            const rowDone = cDone >= 0 && (cols[cDone] || '').trim() === '是';
+            if(!AppState.bins.has(bId)) {
+                AppState.bins.set(bId, {
+                    name: `第 ${bNum} 箱`,
+                    tracking: cols[cTrack] || '',
+                    note: note,
+                    items: new Map(),
+                    completed: rowDone
+                });
+            } else {
+                if(note) AppState.bins.get(bId).note = note;
+                if(rowDone) AppState.bins.get(bId).completed = true;
+            }
+
+            if(itemName !== '此箱無商品' && itemCode) {
+                const restored = { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty, note: itemNote };
+                if (cManual >= 0 && (cols[cManual] || '').trim() === '是') restored.manual = true;
+                AppState.bins.get(bId).items.set(itemCode, restored);
+            }
+        }
+        binCounter=maxBin;
+        logEvent('還原', `還原 ${kindLabel} 備份`);
+        render(); saveStateToLocalStorage(); showToast("還原成功", "success");
+    }
+    // Excel 備份還原：讀第一張工作表 → 每列轉成字串陣列 → 走同一套表格還原（照片欄忽略）
+    async function restoreFromXlsxBuffer(buf) {
+        await ensureExcelJS();
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf);
+        const ws = wb.worksheets[0];
+        if (!ws) { showToast('讀不到工作表，這不是有效的 Excel 備份。', 'error'); return; }
+        const rows = [];
+        ws.eachRow({ includeEmpty: false }, (row) => {
+            const arr = [];
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => { arr[colNumber - 1] = String(cell.text == null ? '' : cell.text); });
+            rows.push(arr);
+        });
+        restoreFromTableRows(rows, 'Excel');
+    }
     function handleCsvImport(event) {
         const file = event.target.files[0];
         if (!file) return;
         if (!confirm("確定還原？目前的資料將被清除。")) { event.target.value = ''; return; }
+        const isXlsx = /\.xlsx$/i.test(file.name);
         const reader = new FileReader();
-        reader.onload = function(e) {
-            const text = e.target.result;
-            // 進度檔（JSON）走完整還原；CSV 走表格解析
-            if (/\.json$/i.test(file.name) || text.trim().startsWith('{')) { restoreProgressFromText(text); return; }
-            const rows = text.split('\n').filter(r => r.trim() !== '');
-            if(rows.length <= 1) return;
-            AppState.pool.clear(); AppState.bins.clear(); AppState.trash.clear(); binCounter=0; AppState.lockedBinId=null;
-            let maxBin=0;
-
-            // 還原匯出時加的 ="..." 文字包裝（舊備份無包裝會原樣通過）
-            const unwrapExcelText = (s) => { const m = /^="([\s\S]*)"$/.exec(s || ''); return m ? m[1] : (s || ''); };
-            const header = parseCsvRow(rows[0]).map(h => unwrapExcelText(h).trim());
-            // 依欄位「名稱」定位，相容新舊欄位順序（含更舊的無備註格式）
-            const col = (name, fb) => { const i = header.indexOf(name); return i >= 0 ? i : fb; };
-            const cOrder = col('訂單號碼', 0);
-            const cBin = col('箱號', 1), cTrack = col('運單號', 2), cNote = col('備註', -1), cItemNote = col('商品備註', -1), cManual = col('手動新增', -1), cDone = col('箱已完成', -1);
-            const cCode = col('商品編號', 3), cBarcode = col('國際條碼', 4), cName = col('品項名稱', 5), cQty = col('數量', 6);
-
-            for(let i=1; i<rows.length; i++){
-                const cols = parseCsvRow(rows[i]).map(unwrapExcelText); // 全欄位脫掉 ="..." 包裝
-                const binName = (cols[cBin] || '').trim();
-                if(!binName) continue;
-
-                const rowOrder = (cols[cOrder] || '').trim();
-                if (rowOrder && rowOrder !== 'N/A' && !orderNumberInput.value.trim()) orderNumberInput.value = rowOrder;
-
-                // 「待分箱」「未分類」不是箱子：分別還原到待分箱區 / 未能分類商品區
-                if (binName === '待分箱' || binName === '未分類') {
-                    const code = unwrapExcelText(cols[cCode]);
-                    if (!code) continue;
-                    const it = { code, barcode: unwrapExcelText(cols[cBarcode]), name: cols[cName] || '', quantity: parseInt(cols[cQty]) || 0, note: (cItemNote >= 0 ? cols[cItemNote] : '') || '' };
-                    if (cManual >= 0 && (cols[cManual] || '').trim() === '是') it.manual = true;
-                    (binName === '待分箱' ? AppState.pool : AppState.trash).set(code, it);
-                    continue;
-                }
-
-                const binNumMatch = binName.match(/第\s*(\d+)\s*箱/);
-                const bNum = binNumMatch ? parseInt(binNumMatch[1]) : (parseInt(binName.match(/\d+/)?.[0]||0));
-                
-                maxBin = Math.max(maxBin, bNum);
-                const bId = `bin-${bNum}`;
-
-                let note = '';
-                let itemNote = '';
-                let itemCode = '';
-                let itemBarcode = '';
-                let itemName = '';
-                let itemQty = 0;
-
-                if (cNote >= 0) note = cols[cNote] || '';
-                if (cItemNote >= 0) itemNote = cols[cItemNote] || '';
-                itemCode = unwrapExcelText(cols[cCode]);
-                itemBarcode = unwrapExcelText(cols[cBarcode]);
-                itemName = cols[cName] || '';
-                itemQty = parseInt(cols[cQty]) || 0;
-
-                const rowDone = cDone >= 0 && (cols[cDone] || '').trim() === '是';
-                if(!AppState.bins.has(bId)) {
-                    AppState.bins.set(bId, {
-                        name: `第 ${bNum} 箱`,
-                        tracking: cols[cTrack] || '',
-                        note: note,
-                        items: new Map(),
-                        completed: rowDone
-                    });
-                } else {
-                    if(note) AppState.bins.get(bId).note = note;
-                    if(rowDone) AppState.bins.get(bId).completed = true;
-                }
-
-                if(itemName !== '此箱無商品' && itemCode) {
-                    const restored = { code: itemCode, barcode: itemBarcode, name: itemName, quantity: itemQty, note: itemNote };
-                    if (cManual >= 0 && (cols[cManual] || '').trim() === '是') restored.manual = true;
-                    AppState.bins.get(bId).items.set(itemCode, restored);
-                }
+        reader.onload = async function(e) {
+            try {
+                if (isXlsx) { await restoreFromXlsxBuffer(e.target.result); return; }
+                const text = e.target.result;
+                // 進度檔（JSON）走完整還原；CSV 走表格解析
+                if (/\.json$/i.test(file.name) || text.trim().startsWith('{')) { restoreProgressFromText(text); return; }
+                const rawRows = text.split('\n').filter(r => r.trim() !== '');
+                restoreFromTableRows(rawRows.map(parseCsvRow), 'CSV');
+            } catch (err) {
+                showToast('還原失敗：' + ((err && err.message) || err), 'error');
             }
-            binCounter=maxBin;
-            logEvent('還原', '還原 CSV 備份');
-            render(); saveStateToLocalStorage(); showToast("還原成功", "success");
         };
-        reader.readAsText(file);
+        if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file);
         event.target.value = '';
     }
     importCsvInput.addEventListener('change', handleCsvImport);
 
     // --- 進度檔（完整快照）：保存 / 還原 ---
-    // CSV 是給人看的分箱明細，存不了垃圾桶與操作紀錄；進度檔存的是完整狀態，還原後跟離開時一模一樣。
+    // Excel 是給人看的分箱明細（含照片），存不了垃圾桶與操作紀錄；進度檔存的是完整狀態，還原後跟離開時一模一樣。
     const PROGRESS_MAGIC = 'packing-list-helper-progress';
     function buildProgressSnapshot() {
         return {
@@ -2605,7 +2570,7 @@
         const ts = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
         const order = orderNumberInput.value.trim() || 'NoOrder';
         const filename = `${order}_${ts}_進度.json`;
-        if (exportDirHandle && await saveCsvToExportFolder(json, filename)) {
+        if (exportDirHandle && await saveToExportFolder(json, filename, 'application/json')) {
             showToast(`進度已保存到「${exportDirHandle.name}」：${filename}`, 'success');
             return;
         }
@@ -2654,21 +2619,30 @@
         if (request && (await handle.requestPermission(opts)) === 'granted') return true;
         return false;
     }
+    let bkLegacyCleaned = false; // 舊制 CSV 備份檔（packing_latest.csv 等）每次啟動只清一次
     async function writeBackupNow() {
         if (!backupActive || !backupDirHandle) return;
         if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) return; // 空資料不覆寫，避免誤清把好備份蓋掉
-        if (typeof window.__plhBuildCSV !== 'function') return;
         try {
-            const blob = new Blob([window.__plhBuildCSV()], { type: 'text/csv;charset=utf-8;' });
-            for (const fname of ['packing_latest.csv', `packing_${bkTodayStamp()}.csv`]) {
-                const fh = await backupDirHandle.getFileHandle(fname, { create: true });
-                const w = await fh.createWritable(); await w.write(blob); await w.close();
-            }
-            // 另存完整進度檔：CSV 給人看，這份給「還原備份」用（含待分箱/垃圾桶/操作紀錄）
+            // 1) 完整進度檔（還原備份用，最重要 → 先寫，Excel 出錯也不影響它）
             const progBlob = new Blob([JSON.stringify(buildProgressSnapshot())], { type: 'application/json' });
             for (const fname of ['packing_progress_latest.json', `packing_progress_${bkTodayStamp()}.json`]) {
                 const fh = await backupDirHandle.getFileHandle(fname, { create: true });
                 const w = await fh.createWritable(); await w.write(progBlob); await w.close();
+            }
+            // 2) 分箱明細改存 Excel（含照片）：CSV 裝不下圖片，2026-08-25 起一律 xlsx
+            const { buf } = await buildPhotoExcelBuffer();
+            const blob = new Blob([buf], { type: XLSX_MIME });
+            for (const fname of ['packing_latest.xlsx', `packing_${bkTodayStamp()}.xlsx`]) {
+                const fh = await backupDirHandle.getFileHandle(fname, { create: true });
+                const w = await fh.createWritable(); await w.write(blob); await w.close();
+            }
+            // 3) 清掉舊制的「最新」檔，免得日後誤拿到過期資料（歷史日期檔保留不動）
+            if (!bkLegacyCleaned) {
+                bkLegacyCleaned = true;
+                for (const fname of ['packing_latest.csv', 'packing_photos_latest.xlsx']) {
+                    try { await backupDirHandle.removeEntry(fname); } catch (e) { /* 不存在就算了 */ }
+                }
             }
             backupLastError = '';
             updateBackupUI('active', { time: new Date() });
@@ -2757,7 +2731,7 @@
         } catch (e) { updateBackupUI('off'); }
     }
 
-    // ===== 匯出 CSV 的「指定資料夾」（獨立於自動備份）=====
+    // ===== 匯出檔案的「指定資料夾」（獨立於自動備份）=====
     let exportDirHandle = null;
     async function pickExportFolder() {
         if (!backupSupported()) { showToast('此瀏覽器不支援指定資料夾，請改用 Chrome / Edge。', 'error'); return; }
@@ -2777,8 +2751,8 @@
     function updateExportFolderUI() {
         const bar = document.getElementById('export-folder-bar'); if (!bar) return;
         const el = document.getElementById('export-folder-status');
-        if (exportDirHandle) { bar.dataset.state = 'set'; el.textContent = `📁 匯出 CSV 會存到資料夾：${exportDirHandle.name}`; }
-        else { bar.dataset.state = 'off'; el.textContent = '📁 匯出 CSV 目前直接下載到「下載」資料夾'; }
+        if (exportDirHandle) { bar.dataset.state = 'set'; el.textContent = `📁 匯出檔案會存到資料夾：${exportDirHandle.name}`; }
+        else { bar.dataset.state = 'off'; el.textContent = '📁 匯出檔案目前直接下載到「下載」資料夾'; }
     }
     async function initExportFolder() {
         const bar = document.getElementById('export-folder-bar');
@@ -2786,19 +2760,20 @@
         try { const stored = await bkIdbGet('exportDirHandle'); if (stored) exportDirHandle = stored; } catch (e) {}
         updateExportFolderUI();
     }
-    // 把 CSV 寫進指定匯出資料夾；成功 true、失敗 false（呼叫端可退回下載）
-    async function saveCsvToExportFolder(csvString, filename) {
+    // 把檔案（Blob 或字串）寫進指定匯出資料夾；成功 true、失敗 false（呼叫端可退回下載）
+    async function saveToExportFolder(data, filename, mime) {
         if (!exportDirHandle) return false;
         try {
             if (!(await bkEnsurePerm(exportDirHandle, true))) return false;
+            const blob = (data instanceof Blob) ? data : new Blob([data], { type: mime || 'application/octet-stream' });
             const fh = await exportDirHandle.getFileHandle(filename, { create: true });
-            const w = await fh.createWritable(); await w.write(new Blob([csvString], { type: 'text/csv;charset=utf-8;' })); await w.close();
+            const w = await fh.createWritable(); await w.write(blob); await w.close();
             return true;
         } catch (e) { showToast('寫入匯出資料夾失敗，改為下載。', 'error'); return false; }
     }
 
     // ===== 新商品照片：手機掃 QR 拍照 → 經本機橋接綁定 → 匯出商品圖卡 =====
-    // 照片存在獨立的 IndexedDB（key = 商品編號），重新整理不會掉；不寫進 CSV。
+    // 照片存在獨立的 IndexedDB（key = 商品編號），重新整理不會掉；匯出/備份的 Excel 會內嵌縮圖。
     const PH_DB = 'plh_photos', PH_STORE = 'photos';
     function phEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
     function phIdbOpen() {
@@ -2815,8 +2790,8 @@
     function phAll() { return phIdbOpen().then(db => new Promise((res, rej) => { const tx = db.transaction(PH_STORE, 'readonly'); const store = tx.objectStore(PH_STORE); const kq = store.getAllKeys(), vq = store.getAll(); tx.oncomplete = () => { const m = new Map(); const ks = kq.result || [], vs = vq.result || []; ks.forEach((k, i) => m.set(k, vs[i])); res(m); }; tx.onerror = () => rej(tx.error); })); }
 
     async function loadPhotos() { try { photoMem = await phAll(); render(); } catch (e) { /* IDB 不可用就略過 */ } }
-    async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); scheduleXlsxBackup(); }
-    async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); scheduleXlsxBackup(); }
+    async function setItemPhoto(code, dataUrl) { photoMem.set(code, dataUrl); try { await phSet(code, dataUrl); } catch (e) {} render(); scheduleBackup(); }
+    async function removeItemPhoto(code) { photoMem.delete(code); try { await phDel(code); } catch (e) {} render(); scheduleBackup(); }
 
     function collectManualItems() {
         const seen = new Map();
@@ -2947,7 +2922,8 @@
     }
 
     // 匯出 Excel（.xlsx）：整張分箱清單 + 最後一欄「照片」（有拍的列就嵌入縮圖）。
-    // CSV 仍保留（自動備份／還原 用）；此 Excel 是要給客戶看的成品。
+    // 2026-08-25 起唯一的表格匯出格式（CSV 已移除）：給客戶看的成品＝自動備份的人讀檔＝還原備份可讀的表格。
+    // 欄位與舊 CSV 完全對齊（含 箱已完成、待分箱／未分類 列），還原備份靠欄名定位。
     // 建立「含照片的 Excel」ArrayBuffer（手動匯出與自動備份共用）
     async function buildPhotoExcelBuffer() {
         await ensureExcelJS();
@@ -2965,6 +2941,7 @@
             { header: '備註', key: 'note', width: 16 },
             { header: '商品備註', key: 'itemNote', width: 18 },
             { header: '手動新增', key: 'manual', width: 10 },
+            { header: '箱已完成', key: 'done', width: 10 },
             { header: '照片', key: 'photo', width: 16 },
         ];
         // 識別碼欄位鎖成「文字」格式：長編號不會變科學記號、前導零不會被吃掉（值本身也一律以字串寫入）
@@ -2972,7 +2949,7 @@
         ws.getRow(1).font = { bold: true };
         ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
         ws.views = [{ state: 'frozen', ySplit: 1 }];
-        const PHOTO_COL0 = 10; // 0-based index of 照片 欄（前面多插了「商品備註」「手動新增」欄）
+        const PHOTO_COL0 = 11; // 0-based index of 照片 欄（前面有「商品備註」「手動新增」「箱已完成」欄）
         const toEmbed = []; // { rowNumber, dataUrl }
         const addItemRow = (vals, code) => {
             const row = ws.addRow(vals);
@@ -2983,13 +2960,16 @@
         Array.from(AppState.bins.values()).forEach((bin, index) => {
             const note = bin.note || '';
             const binName = String(index + 1);
+            const done = bin.completed ? '是' : '';
             if (bin.items.size === 0) {
-                addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '', manual: '' }, null);
+                addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: '', barcode: '', name: '此箱無商品', qty: 0, note, itemNote: '', manual: '', done }, null);
             } else {
-                bin.items.forEach(item => addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
+                bin.items.forEach(item => addItemRow({ order: String(orderNumber), tracking: String(bin.tracking || ''), bin: binName, code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note, itemNote: item.note || '', manual: item.manual ? '是' : '', done }, item.code));
             }
         });
-        AppState.trash.forEach(item => addItemRow({ order: String(orderNumber), tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '' }, item.code));
+        // 未能分類商品區（箱號＝未分類）與待分箱區（箱號＝待分箱）一併輸出 → 還原備份時才能還原
+        AppState.trash.forEach(item => addItemRow({ order: String(orderNumber), tracking: '', bin: '未分類', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '', done: '' }, item.code));
+        AppState.pool.forEach(item => addItemRow({ order: String(orderNumber), tracking: '', bin: '待分箱', code: String(item.code), barcode: String(item.barcode), name: item.name, qty: item.quantity, note: '', itemNote: item.note || '', manual: item.manual ? '是' : '', done: '' }, item.code));
         toEmbed.forEach(e => {
             const comma = e.dataUrl.indexOf(',');
             const b64 = comma >= 0 ? e.dataUrl.slice(comma + 1) : e.dataUrl;
@@ -3002,10 +2982,10 @@
     }
 
     async function exportPhotoExcel() {
-        if (AppState.bins.size === 0 && AppState.trash.size === 0) { showToast('沒有資料可以匯出！', 'error'); return; }
+        if (AppState.bins.size === 0 && AppState.trash.size === 0 && AppState.pool.size === 0) { showToast('沒有資料可以匯出！', 'error'); return; }
         if (AppState.pool.size > 0) {
             const total = Array.from(AppState.pool.values()).reduce((s, i) => s + (i.quantity || 0), 0);
-            if (!confirm(`待分箱區尚有未分類商品（${AppState.pool.size} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？`)) return;
+            if (!confirm(`待分箱區尚有未分類商品（${AppState.pool.size} 項 / 共 ${total} 件）尚未分箱，確定要繼續匯出嗎？\n（Excel 會以「待分箱」列一併寫入，還原備份時可還原）`)) return;
         }
         if (typeof window.__plhEmptyBinsOk === 'function' && !window.__plhEmptyBinsOk()) return;
         const btn = document.getElementById('export-excel-btn');
@@ -3019,18 +2999,9 @@
             const now = new Date();
             const hms = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
             const filename = `${orderNumber}_${hms}_分箱明細含照片.xlsx`;
-            const blob = new Blob([result.buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            // 與 CSV 一致：有設定「匯出資料夾」就寫進去，沒設定或寫入失敗則下載
-            let savedToFolder = false;
-            if (exportDirHandle) {
-                try {
-                    if (await bkEnsurePerm(exportDirHandle, true)) {
-                        const fh = await exportDirHandle.getFileHandle(filename, { create: true });
-                        const w = await fh.createWritable(); await w.write(blob); await w.close();
-                        savedToFolder = true;
-                    }
-                } catch (e) { savedToFolder = false; }
-            }
+            const blob = new Blob([result.buf], { type: XLSX_MIME });
+            // 有設定「匯出資料夾」就寫進去，沒設定或寫入失敗則下載
+            const savedToFolder = exportDirHandle && await saveToExportFolder(blob, filename);
             if (savedToFolder) {
                 showToast(`已匯出到「${exportDirHandle.name}」：${filename}（含 ${result.photoCount} 張照片）`, 'success');
             } else {
@@ -3046,23 +3017,7 @@
         }
     }
 
-    // 自動備份「含照片的 Excel」到『備份資料夾』（照片不在 CSV 備份裡 → 這裡補上保險）。
-    // 只在已啟用備份資料夾且有照片時才寫；照片變動後 debounce，離開頁面時立即寫。
-    let xlsxBackupTimer = null;
-    async function writePhotoXlsxBackup() {
-        if (!backupActive || !backupDirHandle || photoMem.size === 0) return;
-        if (AppState.bins.size === 0 && AppState.trash.size === 0) return;
-        try {
-            const { buf } = await buildPhotoExcelBuffer();
-            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const fh = await backupDirHandle.getFileHandle('packing_photos_latest.xlsx', { create: true });
-            const w = await fh.createWritable(); await w.write(blob); await w.close();
-        } catch (e) { /* 背景備份失敗就略過，不打擾使用者 */ }
-    }
-    function scheduleXlsxBackup() {
-        if (xlsxBackupTimer) clearTimeout(xlsxBackupTimer);
-        xlsxBackupTimer = setTimeout(writePhotoXlsxBackup, 12000);
-    }
+    // （舊的 writePhotoXlsxBackup 已移除：自動備份的 packing_latest.xlsx 本身就含照片，見 writeBackupNow）
 
     function saveStateToLocalStorage() {
         localStorage.setItem('binningToolState_v72', JSON.stringify({
@@ -3099,7 +3054,7 @@
     document.getElementById('backup-enable-btn').addEventListener('click', reactivateBackup);
     document.getElementById('backup-now-btn').addEventListener('click', () => { if (backupActive) writeBackupNow(); });
     document.getElementById('backup-off-btn').addEventListener('click', disableBackup);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) { writeBackupNow(); writePhotoXlsxBackup(); } });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && backupActive) { writeBackupNow(); } });
     initBackup();
     // 向瀏覽器申請「持久儲存」：硬碟吃緊時不會自動清掉本站資料（localStorage / IndexedDB）
     if (navigator.storage && navigator.storage.persist) {
